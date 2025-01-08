@@ -18,6 +18,8 @@ dependencies = [
     "pytest>=8.3.4",
     "reportlab>=4.2.5",
     "typer>=0.15.1",
+    "jinja2>=3.1.5",
+    "playwright>=1.49.1",
 ]
 
 [build-system]

@@ -156,7 +156,8 @@ def draw_wrapped_text(
                 font_name,
                 font_size,
             )
-            current_line = []
+            current_line = [item]
+            current_x = line_start_x + item.get_width(canvas)
             continue
 
         # split the line, draw the current line and move on
@@ -167,7 +168,7 @@ def draw_wrapped_text(
             remaining_width - space_width,
         )
 
-        if current_text.text:
+        if current_text:
             current_line.append(current_text)
 
         current_y = draw_text(
@@ -236,11 +237,6 @@ def wrap_text(
         - current_line is Text object that fits within remaining_width
         - remaining_text is Text object that needs to wrap to next line
     """
-    if not text_obj.text:
-        return Text(
-            text="", font_name=text_obj.font_name, font_size=text_obj.font_size
-        ), Text(text="", font_name=text_obj.font_name, font_size=text_obj.font_size)
-
     words = text_obj.text.split()
     current_line = []
     next_line = []
@@ -248,13 +244,17 @@ def wrap_text(
     current_width = 0
     space_width = canvas.stringWidth(" ", text_obj.font_name, text_obj.font_size)
 
-    for word in words:
+    while words:
+        word = words[0]
         word_width = canvas.stringWidth(word, text_obj.font_name, text_obj.font_size)
         if current_width + word_width <= remaining_width:
             current_line.append(word)
             current_width += word_width + space_width
+            words.pop(0)
         else:
-            next_line.append(word)
+            break
+
+    next_line = words
 
     return (
         Text(

@@ -1,7 +1,7 @@
 import io
 import json
 import logging
-import multiprocessing
+import multiprocessing.dummy
 import re
 from pathlib import Path
 from typing import List, Optional, Sequence
@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from srt.config import cached_completion, load_known_words, settings
 from srt.generate_anki import create_anki_package, generate_audio_for_cards
-from srt.generate_pdf import PDFGeneratorConfig, create_flashcard_pdf
+from srt.generate_pdf_html import PDFGeneratorConfig, create_flashcard_pdf
 from srt.schema import (
     ConversionProgress,
     ConversionStage,
@@ -95,18 +95,15 @@ def _infer_fields(chunk: Sequence[VocabItem]) -> List[VocabItem]:
 def infer_missing_fields_parallel(
     rows: Sequence[VocabItem], infer_chunk_size: int = 25
 ):
-    with multiprocessing.Pool(processes=4) as pool:
-        try:
-            chunk_results = pool.starmap(
-                _infer_fields,
-                [
-                    (rows[i : i + infer_chunk_size],)
-                    for i in range(0, len(rows), infer_chunk_size)
-                ],
-            )
-        except Exception as e:
-            logging.error("Error processing chunks: %s", str(e))
-            raise
+    with multiprocessing.dummy.Pool(processes=4) as pool:
+        chunk_results = pool.starmap(
+            _infer_fields,
+            [
+                (rows[i : i + infer_chunk_size],)
+                for i in range(0, len(rows), infer_chunk_size)
+            ],
+            chunksize=1,
+        )
 
         # Flatten results
         return [item for chunk in chunk_results for item in chunk]
@@ -359,10 +356,10 @@ def filter_known_vocabulary(
     kept = []
     for item in vocab_items:
         if item.term in known_words:
-            logging.info("Discarding: %s", item.term)
+            # logging.info("Discarding: %s", item.term)
             continue
         if item.meaning in known_words:
-            logging.info("Discarding: %s", item.meaning)
+            # logging.info("Discarding: %s", item.meaning)
             continue
         kept.append(item)
     return kept

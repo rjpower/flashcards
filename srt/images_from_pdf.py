@@ -52,6 +52,5 @@ def extract_images_from_pdf(
         image_data_list.append(
             ImageData(mime_type="image/jpeg", content=img_byte_arr.getvalue())
         )
-        return image_data_list
 
     return image_data_list

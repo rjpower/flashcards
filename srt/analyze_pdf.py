@@ -1,13 +1,17 @@
 import base64
+import enum
 import json
 import logging
+import multiprocessing.dummy
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Generator, List
+from typing import Generator, List, Sequence
 
+import litellm
 from openai import audio
 
 from srt.config import cached_completion
-from srt.generate_pdf import PDFGeneratorConfig, create_flashcard_pdf
+from srt.generate_pdf_html import PDFGeneratorConfig, create_flashcard_pdf
 from srt.images_from_pdf import ImageData, PdfOptions, extract_images_from_pdf
 from srt.lib import (
     ConversionProgress,
@@ -81,12 +85,18 @@ Return only valid JSON array of flashcards.
 """
 
 
-def analyze_pdf_images(images: List[ImageData]) -> List[RawFlashCard]:
-    """Analyze all PDF page images and extract flashcards"""
+class CardType(enum.StrEnum):
+    VOCAB = "vocab"
+    SENTENCE = "sentence"
 
-    # Convert all images to base64
+
+def _analyze_image_batch(
+    image_batch: Sequence[ImageData], card_type: CardType
+) -> List[RawFlashCard]:
+    """Process a batch of images into flashcards"""
+    # Convert images to base64
     image_contents = []
-    for image in images:
+    for image in image_batch:
         image_b64 = base64.b64encode(image.content).decode("utf-8")
         image_contents.append(
             {
@@ -95,12 +105,32 @@ def analyze_pdf_images(images: List[ImageData]) -> List[RawFlashCard]:
             }
         )
 
+    prompt = VOCAB_PROMPT if card_type == CardType.VOCAB else SENTENCE_PROMPT
+
     response = cached_completion(
         messages=[
             {
                 "role": "user",
-                "content": [{"type": "text", "text": SENTENCE_PROMPT}] + image_contents,
+                "content": [{"type": "text", "text": prompt}] + image_contents,
             }
+        ],
+        safety_settings=[
+            {
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_ONLY_HIGH",
+            },
+            {
+                "category": "HARM_CATEGORY_HATE_SPEECH",
+                "threshold": "BLOCK_ONLY_HIGH",
+            },
+            {
+                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                "threshold": "BLOCK_ONLY_HIGH",
+            },
+            {
+                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                "threshold": "BLOCK_ONLY_HIGH",
+            },
         ],
         response_format={"type": "json_object"},
     )
@@ -116,14 +146,40 @@ def analyze_pdf_images(images: List[ImageData]) -> List[RawFlashCard]:
             back_context=card_data.get("back_context"),
         )
         cards.append(card)
-
-    # dedup
-    cards = list({card.front: card for card in cards}.values())
     return cards
 
 
+def analyze_pdf_images(
+    images: List[ImageData], card_type: CardType, batch_size: int = 4
+) -> List[RawFlashCard]:
+    """Analyze all PDF page images and extract flashcards using parallel processing"""
+
+    with multiprocessing.dummy.Pool(processes=4) as pool:
+        # Process images in batches
+        batch_results = pool.starmap(
+            _analyze_image_batch,
+            [
+                (images[i : i + batch_size], card_type)
+                for i in range(0, len(images), batch_size)
+            ],
+            chunksize=1,
+        )
+
+        # Flatten results and remove duplicates
+        all_cards = [card for batch in batch_results for card in batch]
+        return list({card.front: card for card in all_cards}.values())
+
+
+@dataclass
+class AnalyzePdfConfig:
+    pdf_path: Path
+    output_path: Path
+    output_format: OutputFormat
+    card_type: CardType
+
+
 def process_pdf_images(
-    pdf_path: Path, output_path: Path, output_format: OutputFormat
+    config: AnalyzePdfConfig,
 ) -> Generator[ConversionProgress, None, None]:
     """Process PDF file by converting to images and analyzing with Gemini Vision"""
 
@@ -138,7 +194,7 @@ def process_pdf_images(
         progress=10,
     )
 
-    images = extract_images_from_pdf(pdf_path, PdfOptions())
+    images = extract_images_from_pdf(config.pdf_path, PdfOptions())
 
     # Analyze all images together
     yield ConversionProgress(
@@ -147,29 +203,34 @@ def process_pdf_images(
         progress=50,
     )
 
-    all_cards = analyze_pdf_images(images)
+    all_cards = analyze_pdf_images(images, card_type=config.card_type)
 
     # Export cards
     yield ConversionProgress(
         stage=ConversionStage.PROCESSING,
-        message=f"Exporting to {output_format}",
+        message=f"Exporting to {config.output_format}",
         progress=90,
     )
 
-    if output_format == OutputFormat.ANKI_PKG:
-        create_anki_package(output_path, all_cards, pdf_path.stem, audio_mapping={})
-    else:
-        config = PDFGeneratorConfig(
-            columns=2,
-            rows=4,
-            cards=all_cards,
-            output_path=output_path,
+    if config.output_format == OutputFormat.ANKI_PKG:
+        create_anki_package(
+            config.output_path,
+            vocab_items=all_cards,
+            deck_name=config.pdf_path.stem,
+            audio_mapping={},
         )
-        create_flashcard_pdf(config)
+    else:
+        pdf_config = PDFGeneratorConfig(
+            columns=3 if config.card_type == CardType.VOCAB else 2,
+            rows=6 if config.card_type == CardType.VOCAB else 4,
+            cards=all_cards,
+            output_path=config.output_path,
+        )
+        create_flashcard_pdf(pdf_config)
 
     yield ConversionProgress(
         stage=ConversionStage.COMPLETE,
         message="Processing complete",
         progress=100,
-        filename=output_path.name,
+        filename=config.output_path.name,
     )

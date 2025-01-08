@@ -1,12 +1,13 @@
 import logging
 import sys
+import traceback
 from pathlib import Path
 from typing import Optional
 
 import typer
 from rich import print
 
-from srt.analyze_pdf import process_pdf_images
+from srt.analyze_pdf import AnalyzePdfConfig, CardType, process_pdf_images
 from srt.config import settings
 from srt.lib import (
     CSVProcessConfig,
@@ -48,6 +49,12 @@ def flashcards_from_pdf(
         "-f",
         help="Output format (pdf or apkg)",
     ),
+    card_type: CardType = typer.Option(
+        CardType.VOCAB,
+        "--card-type",
+        "-c",
+        help="Type of card to generate (vocab or sentences)",
+    ),
 ):
     """Extract learning content from PDF files and create flashcards."""
     output_dir = settings.output_dir
@@ -58,7 +65,14 @@ def flashcards_from_pdf(
 
     print(f"[blue]Analyzing PDF: {pdf_path}[/blue]")
 
-    for progress in process_pdf_images(pdf_path, output_path, output_format):
+    config = AnalyzePdfConfig(
+        pdf_path=pdf_path,
+        output_path=output_path,
+        output_format=OutputFormat(output_format),
+        card_type=card_type,
+    )
+
+    for progress in process_pdf_images(config):
         if progress.stage == "error":
             print(f"[red]Error: {progress.error}[/red]", file=sys.stderr)
             sys.exit(1)
@@ -112,26 +126,22 @@ def flashcards_from_csv(
     else:
         # Parse mapping string or infer mapping
         field_mapping = None
+        with open(input_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        separator, df = read_csv(content)
+
         if mapping:
-            try:
-                # Parse mapping string (term=col,reading=col2)
-                pairs = dict(pair.split("=") for pair in mapping.split(","))
-                field_mapping = SourceMapping(
-                    term=pairs.get("term"),
-                    reading=pairs.get("reading"),
-                    meaning=pairs.get("meaning"),
-                    context_jp=pairs.get("context_jp"),
-                    context_en=pairs.get("context_en"),
-                    level=pairs.get("level"),
-                )
-            except Exception as e:
-                print(f"[red]Error parsing mapping: {e}[/red]", file=sys.stderr)
-                sys.exit(1)
+            pairs = dict(pair.split("=") for pair in mapping.split(","))
+            field_mapping = SourceMapping(
+                term=pairs.get("term"),
+                reading=pairs.get("reading"),
+                meaning=pairs.get("meaning"),
+                context_jp=pairs.get("context_jp"),
+                context_en=pairs.get("context_en"),
+                level=pairs.get("level"),
+            )
         else:
             # Infer mapping from CSV content
-            with open(input_path, "r", encoding="utf-8") as f:
-                content = f.read()
-            separator, df = read_csv(content)
             result = infer_field_mapping(df)
             field_mapping = SourceMapping.model_validate(result["suggested_mapping"])
             print(
