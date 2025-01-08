@@ -3,14 +3,15 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-import pandas as pd
 import typer
 from rich import print
 
+from srt.analyze_pdf import process_pdf_images
 from srt.config import settings
 from srt.lib import (
     CSVProcessConfig,
     SRTProcessConfig,
+    clean_filename,
     infer_field_mapping,
     process_csv,
     process_srt,
@@ -32,8 +33,42 @@ logger = logging.getLogger(__name__)
 app = typer.Typer()
 
 
-@app.command(name="export_pdf")
-def export_pdf(
+@app.command(name="flashcards_from_pdf")
+def flashcards_from_pdf(
+    pdf_path: Path = typer.Argument(
+        ...,
+        help="Path to the PDF file to analyze",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+    ),
+    output_format: str = typer.Option(
+        "pdf",
+        "--format",
+        "-f",
+        help="Output format (pdf or apkg)",
+    ),
+):
+    """Extract learning content from PDF files and create flashcards."""
+    output_dir = settings.output_dir
+    output_dir.mkdir(exist_ok=True, parents=True)
+
+    clean_name = clean_filename(pdf_path.stem)
+    output_path = output_dir / f"{clean_name}_cards.{output_format}"
+
+    print(f"[blue]Analyzing PDF: {pdf_path}[/blue]")
+
+    for progress in process_pdf_images(pdf_path, output_path, output_format):
+        if progress.stage == "error":
+            print(f"[red]Error: {progress.error}[/red]", file=sys.stderr)
+            sys.exit(1)
+        print(f"[blue]{progress.message}[/blue]", file=sys.stderr)
+
+    print(f"[green]Output written to {output_path}[/green]")
+
+
+@app.command(name="flashcards_from_csv")
+def flashcards_from_csv(
     input_path: Path = typer.Argument(
         ...,
         help="Path to the SRT or CSV file to process",
@@ -133,8 +168,8 @@ def export_pdf(
     print(f"[green]PDF written to {output_path}[/green]", file=sys.stderr)
 
 
-@app.command(name="anki_from_srt")
-def anki_from_srt(
+@app.command(name="flashcards_from_srt")
+def flashcard_from_srt(
     srt_path: Path = typer.Argument(
         ...,
         help="Path to the SRT file to analyze",
@@ -143,10 +178,10 @@ def anki_from_srt(
         dir_okay=False,
     ),
     output_format: str = typer.Option(
-        "anki",
+        "apkg",
         "--format",
         "-f",
-        help="Output format (anki or latex)",
+        help="Output format (apkg or pdf)",
     ),
     include_audio: bool = typer.Option(
         False,

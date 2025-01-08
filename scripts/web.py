@@ -27,7 +27,6 @@ from srt.lib import (
     process_srt,
     read_csv,
 )
-from srt.processor import process_csv, process_srt
 
 ROOT = Path(__file__).parent.parent.absolute()
 

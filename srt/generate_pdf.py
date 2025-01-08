@@ -1,7 +1,7 @@
-import re
+from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
-from typing import List, Sequence, Tuple
+from typing import List, MutableSequence, Sequence, Tuple
 
 import bs4
 import pydantic
@@ -14,13 +14,12 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
-    NextPageTemplate,
     PageBreak,
     PageTemplate,
 )
 from reportlab.platypus.flowables import Flowable
 
-from srt.schema import VocabItem
+from srt.schema import FlashCard
 
 LINE_SPACING = 2
 RUBY_PADDING = 2
@@ -34,10 +33,7 @@ TERM_FONT_SIZE = 12
 CARD_MARGIN = 0.2 * inch
 TEXT_BLOCK_SPACING = 12
 
-MARGIN = 0.2 * inch
 PAGE_MARGIN = 0 * inch
-COLUMNS = 3
-ROWS = 8
 
 
 # Register Japanese font
@@ -105,6 +101,99 @@ class Text(pydantic.BaseModel):
         width = self.get_width(canvas)
         canvas.restoreState()
         return width
+
+
+def draw_wrapped_text(
+    canvas,
+    text: str,
+    x: float,
+    y: float,
+    width: float,
+    font_name: str = "NotoSans",
+    font_size: int = CONTEXT_FONT_SIZE,
+) -> None:
+    """Draw wrapped text at specified position
+
+    Args:
+        canvas: The ReportLab canvas to draw on
+        text: The text to draw
+        x: Starting x position
+        y: Starting y position
+        width: Available width for text
+        font_name: Font to use
+        font_size: Font size to use
+    """
+    if not text:
+        return
+
+    canvas.setFont(font_name, font_size)
+    flowables = parse_ruby_markup(text, font_name)
+
+    available_width = width - 2 * x
+    current_x = x
+    current_y = y
+    line_start_x = x
+    current_line: MutableSequence[Flowable] = []
+
+    for item in flowables:
+        space_width = (
+            canvas.stringWidth(" ", font_name, font_size) if current_line else 0
+        )
+
+        # does the current item fit on the line, if so, add and continue
+        if item.get_width(canvas) + current_x - line_start_x <= available_width:
+            current_line.append(item)
+            current_x += item.get_width(canvas) + space_width
+            continue
+
+        # If item is not text, draw current line and continue
+        if not isinstance(item, Text):
+            current_y = draw_text(
+                canvas,
+                current_line,
+                line_start_x,
+                current_y,
+                font_name,
+                font_size,
+            )
+            current_line = []
+            continue
+
+        # split the line, draw the current line and move on
+        remaining_width = available_width - (current_x - line_start_x)
+        current_text, remaining = wrap_text(
+            item,
+            canvas,
+            remaining_width - space_width,
+        )
+
+        if current_text.text:
+            current_line.append(current_text)
+
+        current_y = draw_text(
+            canvas,
+            current_line,
+            line_start_x,
+            current_y,
+            font_name,
+            font_size,
+        )
+        current_line = []
+
+        if remaining:
+            current_line.append(remaining)
+            current_x = line_start_x + remaining.get_width(canvas)
+
+    # Draw any remaining items
+    if current_line:
+        current_y = draw_text(
+            canvas,
+            current_line,
+            line_start_x,
+            current_y,
+            font_name,
+            font_size,
+        )
 
 
 def draw_text(canvas, current_line, line_start_x, current_y, font_name, font_size):
@@ -181,92 +270,6 @@ def wrap_text(
     )
 
 
-class ContextText(pydantic.BaseModel):
-    """Represents wrapped context text"""
-
-    text: str
-    font_size: int = CONTEXT_FONT_SIZE
-    font_name: str = "NotoSans"
-
-    def draw_at(self, canvas, x: float, y: float, width: float) -> None:
-        """Draw wrapped context text at specified position"""
-        if not self.text:
-            return
-
-        canvas.setFont(self.font_name, self.font_size)
-        flowables = parse_ruby_markup(self.text, self.font_name)
-
-        available_width = width - 2 * x
-        current_x = x
-        current_y = y
-        line_start_x = x
-        current_line = []
-
-        for item in flowables:
-            space_width = (
-                canvas.stringWidth(" ", self.font_name, self.font_size)
-                if current_line
-                else 0
-            )
-
-            # does the current item fit on the line, if so, add and continue
-            if item.get_width(canvas) + current_x - line_start_x <= available_width:
-                current_line.append(item)
-                current_x += item.get_width(canvas) + space_width
-                continue
-
-            # If item is not text, draw current line and continue
-            if not isinstance(item, Text):
-                current_y = draw_text(
-                    canvas,
-                    current_line,
-                    line_start_x,
-                    current_y,
-                    self.font_name,
-                    self.font_size,
-                )
-                current_line = []
-                continue
-
-            # split the line, draw the current line and move on
-            remaining_width = available_width - (current_x - line_start_x)
-            current_text, remaining = wrap_text(
-                item,
-                canvas,
-                remaining_width - space_width,
-            )
-
-            if current_text.text:
-                current_line.append(current_text)
-
-            current_y = draw_text(
-                canvas,
-                current_line,
-                line_start_x,
-                current_y,
-                self.font_name,
-                self.font_size,
-            )
-            current_line = []
-
-            if remaining:
-                current_line.append(remaining)
-                current_x = line_start_x + remaining.get_width(canvas)
-
-        # Draw any remaining items
-        if current_line:
-            if "cool" in str(current_line):
-                print(current_line)
-            current_y = draw_text(
-                canvas,
-                current_line,
-                line_start_x,
-                current_y,
-                self.font_name,
-                self.font_size,
-            )
-
-
 def parse_ruby_markup(text: str, font_name: str) -> Sequence[Flowable]:
     """Process a potentially Ruby HTML string and return a list of Text and AnnotatedText objects"""
     if not text:
@@ -288,26 +291,14 @@ def parse_ruby_markup(text: str, font_name: str) -> Sequence[Flowable]:
     return result
 
 
-def truncate_text(text: str, max_length: int) -> str:
-    """Truncate text to max_length adding ellipsis if needed"""
-    if not text:
-        return ""
-    if len(text) <= max_length:
-        return text
-    return text[: max_length - 3] + "..."
-
-
-class FlashCard(Flowable):
+@dataclass
+class CardFront(Flowable):
     """Custom flowable for drawing a flashcard"""
 
-    def __init__(
-        self, vocab_item: VocabItem, side: str, card_width: float, card_height: float
-    ):
-        super().__init__()
-        self.vocab_item = vocab_item
-        self.side = side
-        self.width = card_width
-        self.height = card_height
+    card: FlashCard
+    width: float
+    height: float
+    font_name: str
 
     def draw(self):
         """Draw the flashcard content"""
@@ -315,54 +306,98 @@ class FlashCard(Flowable):
         self.canv.setStrokeColor(colors.black)
         self.canv.rect(0, 0, self.width, self.height)
 
-        if self.side == "front":
-            self.canv.setFont("NotoSans", TERM_FONT_SIZE)
-            # Process and draw term with ruby text
-            current_x = MARGIN
-            current_y = self.height - CARD_MARGIN - TERM_FONT_SIZE
+        # Draw main term
+        draw_wrapped_text(
+            self.canv,
+            self.card.front,
+            CARD_MARGIN,
+            self.height - CARD_MARGIN,
+            self.width,
+            font_name=self.font_name,
+            font_size=TERM_FONT_SIZE,
+        )
 
-            flowables = parse_ruby_markup(self.vocab_item.term, font_name="NotoSans")
-            for item in flowables:
-                current_x += item.draw_at(self.canv, current_x, current_y)
+        # Draw reading if present and different from term
+        if self.card.front_sub and self.card.front_sub != self.card.front:
+            draw_wrapped_text(
+                self.canv,
+                self.card.front_sub,
+                CARD_MARGIN,
+                self.height - CARD_MARGIN - TERM_FONT_SIZE - TEXT_BLOCK_SPACING,
+                self.width,
+                font_name=self.font_name,
+                font_size=TERM_FONT_SIZE,
+            )
 
-            # Draw reading if different from term
-            if self.vocab_item.reading:
-                term_without_ruby = "".join(
-                    item.base if isinstance(item, AnnotatedText) else item.text
-                    for item in flowables
-                )
-                if self.vocab_item.reading != term_without_ruby:
-                    text = Text(text=self.vocab_item.reading, font_name="NotoSans")
-                    text.draw_at(
-                        self.canv,
-                        CARD_MARGIN,
-                        self.height - CARD_MARGIN - TERM_FONT_SIZE - TEXT_BLOCK_SPACING,
-                    )
-
-            # Draw context if available
-            if self.vocab_item.context_jp:
-                context = ContextText(
-                    text=self.vocab_item.context_jp, font_name="NotoSans"
-                )
-                context.draw_at(self.canv, MARGIN, MARGIN + 16, self.width)
-        else:
-            self.canv.setFont("Times-Roman", MEANING_FONT_SIZE)
-            meaning = truncate_text(self.vocab_item.meaning, 40)
-            self.canv.drawString(MARGIN, self.height - MARGIN - 12, meaning)
-
-            if self.vocab_item.context_en:
-                context = ContextText(
-                    text=self.vocab_item.context_en, font_name="Times-Roman"
-                )
-                context.draw_at(self.canv, MARGIN, MARGIN + 16, self.width)
+        # Draw context if available
+        if self.card.front_context:
+            draw_wrapped_text(
+                self.canv,
+                self.card.front_context,
+                CARD_MARGIN,
+                CARD_MARGIN + 16,
+                self.width,
+                font_name=self.font_name,
+            )
 
 
-def create_flashcard_pdf(vocab_items: List[VocabItem], output_path: Path):
+@dataclass
+class CardBack(Flowable):
+    """Custom flowable for drawing the back of a flashcard"""
+
+    card: FlashCard
+    width: float
+    height: float
+    font_name: str
+
+    def draw(self):
+        # Draw border
+        self.canv.setStrokeColor(colors.black)
+        self.canv.rect(0, 0, self.width, self.height)
+
+        self.canv.setFont(self.font_name, MEANING_FONT_SIZE)
+        meaning = self.card.back
+        draw_wrapped_text(
+            self.canv,
+            meaning,
+            CARD_MARGIN,
+            self.height - CARD_MARGIN - 12,
+            self.width,
+            font_name=self.font_name,
+            font_size=MEANING_FONT_SIZE,
+        )
+        # self.canv.drawString(CARD_MARGIN, self.height - CARD_MARGIN - 12, meaning)
+
+        if self.card.back_context:
+            draw_wrapped_text(
+                self.canv,
+                self.card.back_context,
+                CARD_MARGIN,
+                CARD_MARGIN + 16,
+                self.width,
+                font_name=self.font_name,
+            )
+
+
+@dataclass
+class PDFGeneratorConfig:
+    """Configuration for PDF generation"""
+
+    cards: Sequence[FlashCard]
+    output_path: Path
+    columns: int = 3
+    rows: int = 6
+
+    front_font: str = "NotoSans"
+    back_font: str = "Times-Roman"
+
+
+def create_flashcard_pdf(config: PDFGeneratorConfig):
     """Generate PDF with flashcards in a grid layout"""
-    output_path.unlink(missing_ok=True)
+    config.output_path.unlink(missing_ok=True)
 
     doc = BaseDocTemplate(
-        str(output_path),
+        str(config.output_path),
         pagesize=letter,
         rightMargin=PAGE_MARGIN,
         leftMargin=PAGE_MARGIN,
@@ -374,12 +409,12 @@ def create_flashcard_pdf(vocab_items: List[VocabItem], output_path: Path):
     page_width = letter[0] - 2 * PAGE_MARGIN
     page_height = letter[1] - 2 * PAGE_MARGIN
 
-    col_width = page_width / COLUMNS
-    row_height = page_height / ROWS
+    col_width = page_width / config.columns
+    row_height = page_height / config.rows
 
     frames = []
-    for row in range(ROWS):
-        for col in range(COLUMNS):
+    for row in range(config.rows):
+        for col in range(config.columns):
             x = PAGE_MARGIN + col * col_width
             y = PAGE_MARGIN + row * row_height
             frame = Frame(
@@ -400,30 +435,44 @@ def create_flashcard_pdf(vocab_items: List[VocabItem], output_path: Path):
 
     # Create flowables
     elements = []
+    cards_per_page = config.columns * config.rows
 
-    # Process cards in batches of 24 (fills 3x8 grid on front and back)
-    for i in range(0, len(vocab_items), 24):
-        batch = vocab_items[i : i + 24]
+    for i in range(0, len(config.cards), cards_per_page):
+        batch = config.cards[i : i + cards_per_page]
 
         # Front side of batch
         for item in batch:
-            elements.append(FlashCard(item, "front", col_width, row_height))
+            elements.append(
+                CardFront(
+                    card=item,
+                    width=col_width,
+                    height=row_height,
+                    font_name=config.front_font,
+                )
+            )
 
         elements.append(PageBreak())
 
         # Back side of same batch (reversed horizontally for double-sided printing)
         # Reorder items to match horizontal flip
-        back_batch = []
-        for row in range(ROWS):
-            row_start = row * COLUMNS
-            row_items = batch[row_start : row_start + COLUMNS]
+        back_batch: MutableSequence[FlashCard] = []
+        for row in range(config.rows):
+            row_start = row * config.columns
+            row_items = batch[row_start : row_start + config.columns]
             back_batch.extend(reversed(row_items))
 
         for item in back_batch:
-            if item:  # Check for None in case batch isn't full
-                elements.append(FlashCard(item, "back", col_width, row_height))
+            if item:
+                elements.append(
+                    CardBack(
+                        card=item,
+                        width=col_width,
+                        height=row_height,
+                        font_name=config.back_font,
+                    )
+                )
 
-        if i != len(vocab_items) - 1:
+        if i != len(config.cards) - 1:
             elements.append(PageBreak())
 
     # Build PDF
