@@ -7,10 +7,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Configuration settings for the SRT flashcard generator"""
 
-    # Paths
-    data_dir: Path = Field(
-        default=Path("data"), description="Directory containing vocabulary data files"
+    model_config = SettingsConfigDict(
+        env_prefix="SRT_", env_file=".env", env_file_encoding="utf-8"
     )
+
+    # Paths
     cache_dir: Path = Field(
         default=Path("cache"), description="Directory for caching LLM responses"
     )
@@ -40,13 +41,8 @@ class Settings(BaseSettings):
 
     gcloud_project_id: str = Field(
         default="",
-        description="Google Cloud project ID for accessing LLM API",
-    )
-
-    model_config = SettingsConfigDict(
-        env_prefix="SRT_", env_file=".env", env_file_encoding="utf-8"
+        description="Google Cloud project ID for TTS API use",
     )
 
 
-# Create a global settings instance
 settings = Settings()
