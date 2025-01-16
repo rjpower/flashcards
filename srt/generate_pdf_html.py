@@ -61,13 +61,12 @@ body {
 }
 
 .term {
-    font-size: 24px;
-    margin-bottom: 0.1in;
+    font-size: 20px;
     flex: 0 0 auto;
 }
 
 .reading {
-    font-size: 20px;
+    font-size: 16px;
     color: #666;
     margin-bottom: 0.1in;
     flex: 0 0 auto;
@@ -87,15 +86,13 @@ body {
 }
 
 .meaning {
-    font-size: 20px;
-    margin-bottom: 0.1in;
+    font-size: 16px;
     flex: 0 0 auto;
 }
 
 .back-context {
     font-size: 14px;
     color: #333;
-    margin-top: 0.1in;
     flex: 1 1 auto;
     overflow: hidden;
 }
@@ -163,7 +160,7 @@ class PDFGeneratorConfig:
     cards: Sequence[FlashCard]
     output_path: Path
     columns: int = 3
-    rows: int = 6
+    rows: int = 8
 
 
 def batch_cards(cards: Sequence[FlashCard], batch_size: int):

@@ -82,34 +82,15 @@ def generate_audio(term: str) -> Optional[bytes]:
     if cache_path.exists():
         return cache_path.read_bytes()
 
-    ssml = f"""
-    <speak>
-        <prosody rate="slow">
-            <p>{term}</p>
-        </prosody>
-    </speak>
-    """
-
     response = litellm.speech(
-        input=ssml,
-        model="vertex_ai/cloud-tts",
-        project_id=settings.gcloud_project_id,
-        voice={
-            "languageCode": "ja-JP",
-            "name": "ja-JP-Neural2-B",
-        },
-        audioConfig={
-            "audioEncoding": "MP3",
-            "speakingRate": 0.8,
-            "pitch": 0.0,
-        },
+        input=term,
+        model="openai/tts-1",
+        voice="alloy",
+        speed=0.8,
     )
 
     if response:
-        temp_path = get_cache_path(f"tts_temp_{term}", "mp3")
-        response.write_to_file(temp_path)
-        audio_data = temp_path.read_bytes()
-        temp_path.unlink()
+        audio_data = response.content
 
         if audio_data:
             cache_path.write_bytes(audio_data)

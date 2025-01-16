@@ -10,7 +10,7 @@ import pandas as pd
 import pysrt
 from pydantic import BaseModel
 
-from srt.config import cached_completion, load_known_words, settings
+from srt.config import cached_completion, settings
 from srt.generate_anki import create_anki_package, generate_audio_for_cards
 from srt.generate_pdf_html import PDFGeneratorConfig, create_flashcard_pdf
 from srt.schema import (
@@ -28,6 +28,7 @@ class SRTProcessConfig(BaseModel):
     output_format: str
     include_audio: bool = False
     deck_name: Optional[str] = None
+    ignore_words: set[str] = set()
 
 
 class CSVProcessConfig(BaseModel):
@@ -41,6 +42,7 @@ class CSVProcessConfig(BaseModel):
     include_audio: bool = False
     deck_name: Optional[str] = None
     field_mapping: SourceMapping
+    ignore_words: set[str] = set()
 
 
 def load_csv_items(
@@ -66,7 +68,7 @@ def load_csv_items(
             "meaning": row.get(mapping.meaning, "") if mapping.meaning else "",
             "context_jp": row.get(mapping.context_jp) if mapping.context_jp else None,
             "context_en": row.get(mapping.context_en) if mapping.context_en else None,
-            "level": row.get(mapping.level) if mapping.level else None,
+            "level": str(row.get(mapping.level)) if mapping.level else None,
             "source": "csv_import",
         }
 
@@ -131,8 +133,7 @@ def process_srt(config: SRTProcessConfig):
         yield progress
 
     # Filter known words and duplicates
-    known_words = load_known_words()
-    vocab_items = filter_known_vocabulary(vocab_items, known_words)
+    vocab_items = filter_known_vocabulary(vocab_items, config.ignore_words)
     vocab_items = remove_duplicate_terms(vocab_items)
 
     audio_mapping = {}
@@ -180,11 +181,12 @@ def process_csv(config: CSVProcessConfig):
     )
 
     vocab_items = load_csv_items(config.df, config.field_mapping)
-    known_words = load_known_words()
-    vocab_items = filter_known_vocabulary(vocab_items, known_words)
+    vocab_items = filter_known_vocabulary(vocab_items, config.ignore_words)
     vocab_items = remove_duplicate_terms(vocab_items)
     logging.info("%d vocabulary items after filtering and dedup.", len(vocab_items))
     vocab_items = infer_missing_fields_parallel(vocab_items)
+    vocab_items = filter_known_vocabulary(vocab_items, config.ignore_words)
+    logging.info("%d vocabulary items after inference and filtering.", len(vocab_items))
 
     if config.include_audio:
         audio_mapping = generate_audio_for_cards(vocab_items)
@@ -350,16 +352,12 @@ Return only valid JSON array with complete items in same format."""
 
 
 def filter_known_vocabulary(
-    vocab_items: List[VocabItem], known_words: set
+    vocab_items: List[VocabItem], ignore_words: set = set()
 ) -> List[VocabItem]:
-    """Remove vocabulary items that are already known"""
+    """Remove vocabulary items that are already known or should be ignored"""
     kept = []
     for item in vocab_items:
-        if item.term in known_words:
-            # logging.info("Discarding: %s", item.term)
-            continue
-        if item.meaning in known_words:
-            # logging.info("Discarding: %s", item.meaning)
+        if item.term in ignore_words or item.meaning in ignore_words:
             continue
         kept.append(item)
     return kept
@@ -418,7 +416,7 @@ def read_csv(file_content: str) -> tuple[str, pd.DataFrame]:
 def infer_field_mapping(df: pd.DataFrame) -> dict:
     """Get LLM suggestions for CSV field mapping using column letters"""
     logging.info("Inferring field mapping for CSV data")
-    preview_rows = df.head(5).fillna("").astype(str).values.tolist()
+    preview_rows = df.head(25).fillna("").astype(str).values.tolist()
     sample_data = "\n".join(
         [",".join(df.columns), *[",".join(row) for row in preview_rows]]
     )
@@ -430,6 +428,13 @@ Look at the content in each column to suggest the best mapping.
 
 CSV Data (first few rows):
 {sample_data}
+
+"term" is mandatory, and should the Japanese word or phrase.
+"reading" is the pronunciation of the term in Hiragana or Katakana.
+"meaning" is the English translation of the term.
+"context_jp" is a Japanese sentence using the term.
+"context_en" is the English translation of the sentence.
+"level" is the JLPT level of the term (N5-N1).
 
 Return only valid JSON in this format:
 {{

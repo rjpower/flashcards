@@ -58,7 +58,17 @@ def json_error(f):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("upload_srt.html", active_tab="srt")
+
+
+@app.route("/srt")
+def srt_upload():
+    return render_template("upload_srt.html", active_tab="srt")
+
+
+@app.route("/csv")
+def csv_upload():
+    return render_template("upload_csv.html", active_tab="csv")
 
 
 @app.route("/upload/srt", methods=["POST"])
@@ -70,10 +80,21 @@ def upload_srt():
         return jsonify({"error": "No file uploaded"}), 400
 
     file = request.files["file"]
-    output_format = request.form.get("format", "anki")
+    filter_file = request.files.get("filter_file")
+    output_format = request.form.get("format", "apkg")
 
     if not file or not file.filename:
         return jsonify({"error": "Invalid file"}), 400
+
+    ignore_words = set()
+    if filter_file and filter_file.filename:
+        ignore_words = {
+            line.strip()
+            for line in filter_file.read().decode("utf-8").splitlines()
+            if line.strip()
+        }
+
+    logging.info("Filtering %d records.", len(ignore_words))
 
     file_content = file.read()
     upload_dir = settings.upload_dir
@@ -92,7 +113,7 @@ def upload_srt():
             output_dir.mkdir(exist_ok=True, parents=True)
 
             clean_name = clean_filename(filename)
-            ext = "apkg" if output_format == "anki" else "pdf"
+            ext = "apkg" if output_format == "apkg" else "pdf"
             output_path = output_dir / f"{clean_name}.{ext}"
 
             config = SRTProcessConfig(
@@ -101,6 +122,7 @@ def upload_srt():
                 output_format=OutputFormat(output_format),
                 include_audio=bool(request.form.get("include_audio")),
                 deck_name=clean_name,
+                ignore_words=ignore_words,
             )
 
             for progress in process_srt(config):
@@ -147,8 +169,19 @@ def upload_csv():
         return jsonify({"error": "No file uploaded"}), 400
 
     file = request.files["file"]
+    filter_file = request.files.get("filter_file")
     if not file or not file.filename:
         return jsonify({"error": "Invalid file"}), 400
+
+    ignore_words = set()
+    if filter_file and filter_file.filename:
+        ignore_words = {
+            line.strip()
+            for line in filter_file.read().decode("utf-8").splitlines()
+            if line.strip()
+        }
+
+    logging.info("Filtering %d records.", len(ignore_words))
 
     # Get field mappings from form
     mapping = SourceMapping(
@@ -160,7 +193,7 @@ def upload_csv():
         level=request.form.get("level_field"),
     )
 
-    output_format = request.form.get("format", "anki")
+    output_format = request.form.get("format", "apkg")
     separator = request.form.get("separator", ",")
 
     # Read CSV data into DataFrame
@@ -181,6 +214,7 @@ def upload_csv():
         field_mapping=mapping,
         include_audio=bool(request.form.get("include_audio")),
         deck_name=clean_name,
+        ignore_words=ignore_words,
     )
 
     def generate():

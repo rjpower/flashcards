@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Japanese SRT Vocabulary Extractor{% endblock %}</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .upload-form {
+            margin: 20px 0;
+            padding: 20px;
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .file-input {
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .file-input label {
+            min-width: 120px;
+            text-align: right;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        .success { background: #e6ffe6; }
+        .error { background: #ffe6e6; }
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .nav-tabs a {
+            padding: 10px 20px;
+            text-decoration: none;
+            background: #eee;
+            color: #333;
+            border-radius: 4px;
+        }
+        .nav-tabs a.active {
+            background: #007bff;
+            color: white;
+        }
+        #progress {
+            margin: 20px 0;
+            display: none;
+        }
+        .progress-bar {
+            height: 20px;
+            background: #007bff;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .progress-text {
+            margin-top: 5px;
+            text-align: center;
+        }
+    </style>
+    {% block extra_styles %}{% endblock %}
+</head>
+<body>
+    <h1>Japanese SRT Vocabulary Extractor</h1>
+
+    <div class="nav-tabs">
+        <a href="/srt" {% if active_tab == 'srt' %}class="active"{% endif %}>SRT Upload</a>
+        <a href="/csv" {% if active_tab == 'csv' %}class="active"{% endif %}>CSV Upload</a>
+    </div>
+
+    {% block content %}{% endblock %}
+
+    <div id="status" class="status"></div>
+    <div id="progress">
+        <div class="progress-bar"></div>
+        <div class="progress-text"></div>
+    </div>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

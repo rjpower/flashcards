@@ -2,8 +2,9 @@ import logging
 import sys
 import traceback
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Sequence
 
+import pandas as pd
 import typer
 from rich import print
 
@@ -102,6 +103,12 @@ def flashcards_from_csv(
         "-s",
         help="CSV separator character",
     ),
+    filter_path: List[Path] = typer.Option(
+        [],
+        "--filter",
+        "-i",
+        help="Glob pattern or path to CSV files containing words to ignore",
+    ),
 ):
     """Export vocabulary from SRT or CSV files directly to PDF flashcards."""
     output_dir = settings.output_dir
@@ -161,6 +168,22 @@ def flashcards_from_csv(
             )
             print(f"[yellow]{vocab_item}[/yellow]")
 
+        # Load ignore words if filter path provided
+        ignore_words = set()
+        for f in filter_path:
+            if f.suffix.lower() == ".csv":
+                filter_df = pd.read_csv(f, dtype=str)
+                # Add all non-empty values from all columns
+                for col in filter_df.columns:
+                    ignore_words.update(
+                        x.strip() for x in filter_df[col].dropna().astype(str)
+                    )
+            else:
+                filter_list = set([w.strip() for w in f.read_text().splitlines()])
+                ignore_words = ignore_words.union(filter_list)
+
+            print(f"[yellow]Loaded {len(ignore_words)} words to ignore[/yellow]")
+
         config = CSVProcessConfig(
             df=df,
             output_path=output_path,
@@ -168,6 +191,7 @@ def flashcards_from_csv(
             include_audio=False,
             deck_name=clean_name,
             field_mapping=field_mapping,
+            ignore_words=ignore_words,
         )
         for progress in process_csv(config):
             if progress.stage == "error":

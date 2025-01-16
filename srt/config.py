@@ -31,7 +31,7 @@ class Settings(BaseSettings):
         default=100, description="Number of text blocks to process in each LLM batch"
     )
     llm_model: str = Field(
-        default="gemini/gemini-1.5-flash",
+        default="gemini/gemini-2.0-flash-exp",
         description="LLM model to use for vocabulary analysis",
     )
 

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="upload-form">
+    <form id="srtForm" enctype="multipart/form-data">
+        <div class="file-input">
+            <label>SRT File:</label>
+            <input type="file" name="file" accept=".srt" required>
+        </div>
+        <div class="file-input">
+            <label>Filter List (Optional):</label>
+            <input type="file" name="filter_file" accept=".txt" title="Optional list of words to filter out">
+        </div>
+        <select name="format" required>
+            <option value="apkg">Anki Deck</option>
+            <option value="pdf">Flashcard PDF</option>
+        </select>
+        <label>
+            <input type="checkbox" name="include_audio" value="1">
+            Include TTS Audio
+        </label>
+        <button type="submit">Generate Deck</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function handleSubmit(e) {
+        e.preventDefault();
+        const progress = document.getElementById('progress');
+        const progressBar = document.querySelector('.progress-bar');
+        const progressText = document.querySelector('.progress-text');
+        const formData = new FormData(e.target);
+
+        try {
+            progress.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressText.textContent = 'Starting...';
+
+            const response = await fetch('/upload/srt', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Upload failed');
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+                const {value, done} = await reader.read();
+                if (done) break;
+
+                const events = decoder.decode(value).split('\n\n');
+                for (const event of events) {
+                    if (event.startsWith('data: ')) {
+                        const data = JSON.parse(event.slice(6));
+                        progressText.textContent = data.message;
+
+                        if (data.progress !== null) {
+                            progressBar.style.width = `${data.progress}%`;
+                        }
+
+                        if (data.stage === 'complete' && data.filename) {
+                            const link = document.createElement('a');
+                            link.href = `/download/${data.filename}`;
+                            link.download = data.filename;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            progressText.textContent = 'Download complete!';
+                        } else if (data.stage === 'error') {
+                            progressBar.style.backgroundColor = '#dc3545';
+                            progressText.textContent = `Error: ${data.message}`;
+                            progress.style.display = 'block';
+                        }
+                    }
+                }
+            }
+
+        } catch (error) {
+            progressText.textContent = `Error: ${error.message}`;
+            progressBar.style.backgroundColor = '#dc3545';
+        }
+    }
+
+    document.getElementById('srtForm').onsubmit = handleSubmit;
+</script>
+{% endblock %}

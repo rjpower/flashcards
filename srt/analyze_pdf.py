@@ -22,9 +22,8 @@ from srt.schema import OutputFormat, RawFlashCard
 
 logger = logging.getLogger(__name__)
 
-VOCAB_PROMPT = """Analyze these pages from a book and create vocabulary flashcards for each word.
-
-Focus on vocabulary that would be valuable for learning.
+VOCAB_PROMPT = """
+Analyze these pages from a book and create vocabulary flashcards for each word.
 You may also create cards to explain novel grammar items.
 
 For each item you find, create a flashcard with the following fields:
@@ -36,7 +35,8 @@ For each item you find, create a flashcard with the following fields:
     back_context: str - a translation of the context sentence
 
 The front and back context should be minimal sentences which demonstrate the
-word or grammar point. They should _not_ be sentences from the text.
+word or grammar point. Use sentences from the text, but only if they highlight the
+word we are interested in. Otherwise create your own.
 
 e.g. for a vocabulary word like "猫" (cat), you might create a card like:
 
@@ -57,9 +57,6 @@ for a grammar term like "〜たり〜たりする" (doing things like...):
     "back_context": "I do things like watch movies and read books."
 }
 
-Assume the reader has a rough understanding of the language, don't include basic
-words like "the" or "and" unless they are used in a novel way.
-
 Return only valid JSON array of flashcards."""
 
 SENTENCE_PROMPT = """
@@ -75,7 +72,7 @@ e.g. for a sentence like "案内してあげるよ？" you might create a card l
 
 {
   "front": "案内してあげるよ？",
-  "front_sub": "[あんない] [してあげる] よ？",
+  "front_sub": "あんないしてあげるよ？",
   "back": "Should I show you the way?"
 }
 
