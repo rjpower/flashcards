@@ -2,16 +2,28 @@
 
 {% block extra_styles %}
 <style>
-    .field-mapping {
+    .field-mapping > .field-column {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+     .field-mapping {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
         margin: 20px 0;
         padding: 20px;
         background: #f8f9fa;
         border-radius: 4px;
     }
+    .field-column {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
     .field-row {
         display: flex;
         align-items: center;
-        margin: 10px 0;
         gap: 10px;
     }
     .field-row label {
@@ -59,35 +71,39 @@
             <h3>CSV Preview</h3>
             <div id="preview-content"></div>
         </div>
+        <h3>Field Mapping</h3>
         <div class="field-mapping">
-            <h3>Field Mapping</h3>
-            <div class="field-row">
-                <label>Term Field:</label>
-                <select name="term_field" required></select>
+            <div class="field-column">
+                <div class="field-row">
+                    <label>Term Field:</label>
+                    <select name="term_field" required></select>
+                </div>
+                <div class="field-row">
+                    <label>Reading Field:</label>
+                    <select name="reading_field"></select>
+                </div>
+                <div class="field-row">
+                    <label>Meaning Field:</label>
+                    <select name="meaning_field"></select>
+                </div>
+                <div class="field-row">
+                    <label>Context (JP):</label>
+                    <select name="context_jp_field"></select>
+                </div>
             </div>
-            <div class="field-row">
-                <label>Reading Field:</label>
-                <select name="reading_field"></select>
-            </div>
-            <div class="field-row">
-                <label>Meaning Field:</label>
-                <select name="meaning_field"></select>
-            </div>
-            <div class="field-row">
-                <label>Context (JP):</label>
-                <select name="context_jp_field"></select>
-            </div>
-            <div class="field-row">
-                <label>Context (EN):</label>
-                <select name="context_en_field"></select>
-            </div>
-            <div class="field-row">
-                <label>Level:</label>
-                <select name="level_field"></select>
-            </div>
-            <div class="field-row">
-                <label>Separator:</label>
-                <input type="text" name="separator" value="," required>
+            <div class="field-column">
+                <div class="field-row">
+                    <label>Context (EN):</label>
+                    <select name="context_en_field"></select>
+                </div>
+                <div class="field-row">
+                    <label>Level:</label>
+                    <select name="level_field"></select>
+                </div>
+                <div class="field-row">
+                    <label>Separator:</label>
+                    <input type="text" name="separator" value="," required>
+                </div>
             </div>
         </div>
         <select name="format" required>
@@ -183,11 +199,7 @@
             document.querySelector('[name="separator"]').value = result.separator;
 
         } catch (error) {
-            console.error('Error analyzing CSV:', error);
-            const status = document.getElementById('status');
-            status.className = 'status error';
-            status.textContent = `Error analyzing CSV: ${error.message}`;
-            status.style.display = 'block';
+            logToStatus(`Error analyzing CSV: ${error.message}`);
         }
     }
 
@@ -201,7 +213,7 @@
         try {
             progress.style.display = 'block';
             progressBar.style.width = '0%';
-            progressText.textContent = 'Starting...';
+            logToStatus('Starting...');
 
             const response = await fetch('/upload/csv', {
                 method: 'POST',
@@ -224,31 +236,31 @@
                 for (const event of events) {
                     if (event.startsWith('data: ')) {
                         const data = JSON.parse(event.slice(6));
-                        progressText.textContent = data.message;
+                        const time = new Date().toLocaleTimeString();
+                        logToStatus(`[${time}] ${data.message}`);
 
                         if (data.progress !== null) {
                             progressBar.style.width = `${data.progress}%`;
                         }
 
-                        if (data.stage === 'complete' && data.filename) {
+                        if (data.stage === 'done' && data.filename) {
                             const link = document.createElement('a');
                             link.href = `/download/${data.filename}`;
                             link.download = data.filename;
                             document.body.appendChild(link);
                             link.click();
                             document.body.removeChild(link);
-                            progressText.textContent = 'Download complete!';
+                            logToStatus('Download complete!');
                         } else if (data.stage === 'error') {
                             progressBar.style.backgroundColor = '#dc3545';
-                            progressText.textContent = `Error: ${data.message}`;
-                            progress.style.display = 'block';
+                            logToStatus(`Error: ${data.message}`);
                         }
                     }
                 }
             }
 
         } catch (error) {
-            progressText.textContent = `Error: ${error.message}`;
+            logToStatus(`Error: ${error.message}`);
             progressBar.style.backgroundColor = '#dc3545';
         }
     }

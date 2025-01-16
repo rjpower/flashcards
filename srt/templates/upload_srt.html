@@ -59,31 +59,31 @@
                 for (const event of events) {
                     if (event.startsWith('data: ')) {
                         const data = JSON.parse(event.slice(6));
-                        progressText.textContent = data.message;
+                        const time = new Date().toLocaleTimeString();
+                        logToStatus(`[${time}] ${data.message}`);
 
                         if (data.progress !== null) {
                             progressBar.style.width = `${data.progress}%`;
                         }
 
-                        if (data.stage === 'complete' && data.filename) {
+                        if (data.stage === 'done' && data.filename) {
                             const link = document.createElement('a');
                             link.href = `/download/${data.filename}`;
                             link.download = data.filename;
                             document.body.appendChild(link);
                             link.click();
                             document.body.removeChild(link);
-                            progressText.textContent = 'Download complete!';
+                            logToStatus('Download complete!');
                         } else if (data.stage === 'error') {
                             progressBar.style.backgroundColor = '#dc3545';
-                            progressText.textContent = `Error: ${data.message}`;
-                            progress.style.display = 'block';
+                            logToStatus(`Error: ${data.message}`);
                         }
                     }
                 }
             }
 
         } catch (error) {
-            progressText.textContent = `Error: ${error.message}`;
+            logToStatus(`Error: ${error.message}`);
             progressBar.style.backgroundColor = '#dc3545';
         }
     }

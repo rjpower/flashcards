@@ -1,7 +1,8 @@
 import hashlib
+import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import Callable, List, Optional, Sequence
 
 import genanki
 import litellm
@@ -108,10 +109,13 @@ class AudioData:
 
 def generate_audio_for_cards(
     items: Sequence[FlashCard],
+    progress_logger: Callable[[str], None] = logging.info,
 ) -> dict[str, AudioData]:
     # Generate audio if requested
     audio_mapping = {}
+    total = len(items)
     for i, item in enumerate(items):
+        progress_logger(f"Generating audio {i+1}/{total}: {item.front}")
         audio_data = generate_audio(item.front)
         if audio_data:
             audio_mapping[item.front] = AudioData(item.front, audio_data)

@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     """Configuration settings for the SRT flashcard generator"""
 
     model_config = SettingsConfigDict(
-        env_prefix="SRT_", env_file=".env", env_file_encoding="utf-8"
+        env_prefix="SRT_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
     # Paths
@@ -41,11 +41,6 @@ class Settings(BaseSettings):
     )
     anki_deck_id: int = Field(
         default=2059400110, description="Unique identifier for the Anki deck"
-    )
-
-    gcloud_project_id: str = Field(
-        default="",
-        description="Google Cloud project ID for TTS API use",
     )
 
 

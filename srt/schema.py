@@ -1,5 +1,6 @@
+import enum
 from enum import Enum
-from typing import List, Optional, Protocol
+from typing import Callable, List, Optional, Protocol
 
 from pydantic import BaseModel
 
@@ -77,19 +78,16 @@ class SourceMapping(BaseModel):
     level: Optional[str] = None
 
 
-class ConversionStage(str, Enum):
-    STARTING = "starting"
-    PROCESSING = "processing"
-    ANALYZING = "analyzing"
-    GENERATING_AUDIO = "generating_audio"
-    COMPLETE = "complete"
+class ConversionStatus(enum.StrEnum):
+    RUNNING = "running"
     ERROR = "error"
+    DONE = "done"
 
 
 class ConversionProgress(BaseModel):
-    stage: ConversionStage
     message: str
-    progress: int = 0
-    result: Optional[List[VocabItem]] = None
-    error: Optional[str] = None
-    filename: Optional[str] = None
+    status: ConversionStatus
+    payload: Optional[str] = None
+
+
+ProgressLogger = Callable[[str], None]

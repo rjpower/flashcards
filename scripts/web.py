@@ -1,6 +1,11 @@
 import logging
+import threading
+import time
+import traceback
+from dataclasses import dataclass, field
 from functools import wraps
 from pathlib import Path
+from typing import List, Optional
 
 from flask import (
     Flask,
@@ -27,6 +32,7 @@ from srt.lib import (
     process_srt,
     read_csv,
 )
+from srt.schema import ConversionProgress, ConversionStatus
 
 ROOT = Path(__file__).parent.parent.absolute()
 
@@ -43,6 +49,59 @@ logging.basicConfig(
     format="%(asctime)s - %(filename)s:%(funcName)s:%(lineno)d - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+
+
+@dataclass
+class ProcessingTracker:
+    """Tracks the progress and state of a processing job"""
+
+    progress_queue: List[ConversionProgress] = field(default_factory=list)
+    error: Optional[str] = None
+    output_filename: Optional[str] = None
+    is_complete: bool = False
+    _thread: Optional[threading.Thread] = None
+
+    def log_progress(self, message: str):
+        """Add a progress message to the queue"""
+        progress = ConversionProgress(message=message, status=ConversionStatus.RUNNING)
+        self.progress_queue.append(progress)
+
+    def set_error(self, error: Exception):
+        """Set error state"""
+        self.error = str(error)
+        self.is_complete = True
+        progress = ConversionProgress(message=str(error), status=ConversionStatus.ERROR)
+        self.progress_queue.append(progress)
+
+    def set_complete(self, output_filename: str):
+        """Set completion state"""
+        self.output_filename = output_filename
+        self.is_complete = True
+        progress = ConversionProgress(
+            message=f"Processing complete: {output_filename}",
+            status=ConversionStatus.DONE,
+            payload=output_filename,
+        )
+        self.progress_queue.append(progress)
+
+    def start_processing(self, target, *args, **kwargs):
+        """Start processing in a thread"""
+        self._thread = threading.Thread(target=target, args=args, kwargs=kwargs)
+        self._thread.start()
+
+    def generate_events(self):
+        """Generate SSE events for progress updates"""
+        while not self.is_complete or self.progress_queue:
+            while self.progress_queue:
+                progress = self.progress_queue.pop(0)
+                yield f"data: {progress.model_dump_json()}\n\n"
+            time.sleep(0.1)
+
+    def stream_response(self):
+        """Create a streaming response for progress updates"""
+        return Response(
+            stream_with_context(self.generate_events()), mimetype="text/event-stream"
+        )
 
 
 def json_error(f):
@@ -106,8 +165,9 @@ def upload_srt():
     srt_path = upload_dir / filename
     srt_path = srt_path.absolute()
     srt_path.write_bytes(file_content)
+    tracker = ProcessingTracker()
 
-    def generate():
+    def _process_srt():
         try:
             output_dir = settings.output_dir
             output_dir.mkdir(exist_ok=True, parents=True)
@@ -123,15 +183,18 @@ def upload_srt():
                 include_audio=bool(request.form.get("include_audio")),
                 deck_name=clean_name,
                 ignore_words=ignore_words,
+                progress_logger=tracker.log_progress,
             )
 
-            for progress in process_srt(config):
-                yield f"data: {progress.model_dump_json()}\n\n"
-
+            process_srt(config)
+            tracker.set_complete(output_path.name)
+        except Exception as e:
+            tracker.set_error(e)
         finally:
             srt_path.unlink(missing_ok=True)
 
-    return Response(stream_with_context(generate()), mimetype="text/event-stream")
+    tracker.start_processing(_process_srt)
+    return tracker.stream_response()
 
 
 @app.route("/csv/analyze", methods=["POST"])
@@ -207,6 +270,7 @@ def upload_csv():
     clean_name = clean_filename(secure_filename(file.filename))
     output_path = output_dir / f"{clean_name}.{output_format}"
 
+    tracker = ProcessingTracker()
     config = CSVProcessConfig(
         df=df,
         output_path=output_path,
@@ -215,13 +279,18 @@ def upload_csv():
         include_audio=bool(request.form.get("include_audio")),
         deck_name=clean_name,
         ignore_words=ignore_words,
+        progress_logger=tracker.log_progress,
     )
 
-    def generate():
-        for progress in process_csv(config):
-            yield f"data: {progress.model_dump_json()}\n\n"
+    def _process_csv():
+        try:
+            process_csv(config)
+            tracker.set_complete(output_path.name)
+        except Exception as e:
+            tracker.set_error(e)
 
-    return Response(stream_with_context(generate()), mimetype="text/event-stream")
+    tracker.start_processing(_process_csv)
+    return tracker.stream_response()
 
 
 @app.route("/download/<filename>")

@@ -12,6 +12,26 @@
             padding: 20px;
             line-height: 1.6;
         }
+        .description {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .description h3 {
+            color: #2c3e50;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        .description ul, .description ol {
+            padding-left: 25px;
+        }
+        .description li {
+            margin: 8px 0;
+        }
+        .description ul ul {
+            margin: 5px 0;
+        }
         .upload-form {
             margin: 20px 0;
             padding: 20px;
@@ -74,12 +94,35 @@
 <body>
     <h1>Japanese SRT Vocabulary Extractor</h1>
 
+    <div class="description">
+        <p>This tool helps you create Japanese language study materials from subtitle files (SRT) or vocabulary lists (CSV).
+           It can generate both Anki flashcard decks and printable PDF flashcards.</p>
+
+        <p>It uses an ML model to extract or generate context sentences and
+        audio. You can choose to output your cards as an Anki package or as
+        a PDF to print out.</p>
+
+        <h3>How to Use:</h3>
+        <ol>
+            <li><strong>SRT Upload:</strong>
+                <ul>
+                    <li>Upload a Japanese subtitle file (.srt)</li>
+                    <li>Optionally provide a text file of known words to filter out</li>
+                </ul>
+            </li>
+            <li><strong>CSV Upload:</strong>
+                <ul>
+                    <li>Upload a CSV file containing vocabulary</li>
+                    <li>Map your CSV columns to vocabulary fields (Missing information will be automatically inferred)</li>
+                </ul>
+            </li>
+        </ol>
+    </div>
+
     <div class="nav-tabs">
         <a href="/srt" {% if active_tab == 'srt' %}class="active"{% endif %}>SRT Upload</a>
         <a href="/csv" {% if active_tab == 'csv' %}class="active"{% endif %}>CSV Upload</a>
     </div>
-
-    {% block content %}{% endblock %}
 
     <div id="status" class="status"></div>
     <div id="progress">
@@ -87,6 +130,18 @@
         <div class="progress-text"></div>
     </div>
 
-    {% block scripts %}{% endblock %}
+    <script>
+        function logToStatus(message) {
+            const status = document.getElementById('status');
+            const lines = status.innerHTML.split('<br>').slice(-5);
+            lines.push(message);
+            status.innerHTML = lines.join('<br>');
+            status.style.display = 'block';
+        }
+    </script>
+    {% block content %}{% endblock %}
+
+    {% block scripts %}
+    {% endblock %}
 </body>
 </html>

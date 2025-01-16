@@ -8,6 +8,8 @@ services:
     environment:
       FLASK_DEBUG: 0
       FLASK_ENV: "production"
-    volumes:
-      - ./data:/app/data
-      - ./output:/app/output
+      CACHE_DIR: "/data/cache"
+      OUTPUT_DIR: "/data/output"
+      UPLOAD_DIR: "/data/upload"
+    env_file:
+      - ./.env

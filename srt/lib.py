@@ -14,9 +14,8 @@ from srt.config import cached_completion, settings
 from srt.generate_anki import create_anki_package, generate_audio_for_cards
 from srt.generate_pdf_html import PDFGeneratorConfig, create_flashcard_pdf
 from srt.schema import (
-    ConversionProgress,
-    ConversionStage,
     OutputFormat,
+    ProgressLogger,
     SourceMapping,
     VocabItem,
 )
@@ -29,6 +28,7 @@ class SRTProcessConfig(BaseModel):
     include_audio: bool = False
     deck_name: Optional[str] = None
     ignore_words: set[str] = set()
+    progress_logger: ProgressLogger
 
 
 class CSVProcessConfig(BaseModel):
@@ -43,6 +43,7 @@ class CSVProcessConfig(BaseModel):
     deck_name: Optional[str] = None
     field_mapping: SourceMapping
     ignore_words: set[str] = set()
+    progress_logger: ProgressLogger
 
 
 def load_csv_items(
@@ -59,7 +60,7 @@ def load_csv_items(
     Returns:
         List of validated vocabulary items with inferred fields
     """
-    logging.info("Processing DataFrame with %d rows", len(df))
+    logging.debug("Processing DataFrame with %d rows", len(df))
     rows = []
     for i, row in df.iterrows():
         item_data = {
@@ -79,7 +80,9 @@ def load_csv_items(
     return rows
 
 
-def _infer_fields(chunk: Sequence[VocabItem]) -> List[VocabItem]:
+def _infer_fields(
+    chunk: Sequence[VocabItem], progress_logger: ProgressLogger = logging.info
+) -> List[VocabItem]:
     """Process a chunk of DataFrame rows into vocabulary items"""
     complete_records = [
         item for item in chunk if item.term and item.reading and item.meaning
@@ -87,21 +90,23 @@ def _infer_fields(chunk: Sequence[VocabItem]) -> List[VocabItem]:
     incomplete_records = [item for item in chunk if item not in complete_records]
 
     if incomplete_records:
-        logging.info(
-            "Inferring fields for %d incomplete records", len(incomplete_records)
+        progress_logger(
+            f"Inferring fields for {len(incomplete_records)} incomplete records"
         )
         return complete_records + infer_missing_fields(incomplete_records)
     return complete_records
 
 
 def infer_missing_fields_parallel(
-    rows: Sequence[VocabItem], infer_chunk_size: int = 25
+    rows: Sequence[VocabItem],
+    progress_logger: ProgressLogger = logging.info,
+    infer_chunk_size: int = 25,
 ):
     with multiprocessing.dummy.Pool(processes=4) as pool:
         chunk_results = pool.starmap(
             _infer_fields,
             [
-                (rows[i : i + infer_chunk_size],)
+                (rows[i : i + infer_chunk_size], progress_logger)
                 for i in range(0, len(rows), infer_chunk_size)
             ],
             chunksize=1,
@@ -112,25 +117,12 @@ def infer_missing_fields_parallel(
 
 
 def process_srt(config: SRTProcessConfig):
-    """Process SRT file to generate flashcards, yielding progress updates"""
-    yield ConversionProgress(
-        stage=ConversionStage.STARTING, message="Starting SRT processing", progress=0
-    )
-
-    # Extract text
-    yield ConversionProgress(
-        stage=ConversionStage.PROCESSING,
-        message="Extracting text from SRT",
-        progress=10,
-    )
+    """Process SRT file to generate flashcards"""
+    config.progress_logger("Extracting text from SRT")
     text_blocks = extract_text_from_srt(config.srt_path)
 
-    # Analyze vocabulary
-    vocab_items = []
-    for progress in analyze_vocabulary(text_blocks):
-        if progress.stage == ConversionStage.COMPLETE:
-            vocab_items = progress.result
-        yield progress
+    config.progress_logger("Analyzing vocabulary")
+    vocab_items = analyze_vocabulary(text_blocks, config)
 
     # Filter known words and duplicates
     vocab_items = filter_known_vocabulary(vocab_items, config.ignore_words)
@@ -138,14 +130,10 @@ def process_srt(config: SRTProcessConfig):
 
     audio_mapping = {}
     if config.include_audio:
-        audio_mapping = generate_audio_for_cards(vocab_items)
+        config.progress_logger("Generating audio files")
+        audio_mapping = generate_audio_for_cards(vocab_items, config.progress_logger)
 
-    # Export based on format
-    yield ConversionProgress(
-        stage=ConversionStage.PROCESSING,
-        message=f"Exporting to {config.output_format}",
-        progress=90,
-    )
+    config.progress_logger(f"Exporting to {config.output_format}")
 
     if config.output_format == OutputFormat.ANKI_PKG:
         create_anki_package(
@@ -161,44 +149,30 @@ def process_srt(config: SRTProcessConfig):
         )
         create_flashcard_pdf(gen_config)
 
-    yield ConversionProgress(
-        stage=ConversionStage.COMPLETE,
-        message="Processing complete",
-        progress=100,
-        filename=config.output_path.name,
-    )
-
 
 def process_csv(config: CSVProcessConfig):
-    """Process CSV file to generate flashcards, yielding progress updates"""
-    yield ConversionProgress(
-        stage=ConversionStage.STARTING, message="Starting CSV processing", progress=0
-    )
-
-    # Load and filter CSV
-    yield ConversionProgress(
-        stage=ConversionStage.PROCESSING, message="Loading CSV data", progress=30
-    )
+    """Process CSV file to generate flashcards."""
+    config.progress_logger("Loading CSV data")
 
     vocab_items = load_csv_items(config.df, config.field_mapping)
     vocab_items = filter_known_vocabulary(vocab_items, config.ignore_words)
     vocab_items = remove_duplicate_terms(vocab_items)
-    logging.info("%d vocabulary items after filtering and dedup.", len(vocab_items))
-    vocab_items = infer_missing_fields_parallel(vocab_items)
+    config.progress_logger(
+        f"{len(vocab_items)} vocabulary items after filtering and dedup."
+    )
+    vocab_items = infer_missing_fields_parallel(vocab_items, config.progress_logger)
     vocab_items = filter_known_vocabulary(vocab_items, config.ignore_words)
-    logging.info("%d vocabulary items after inference and filtering.", len(vocab_items))
+    config.progress_logger(
+        f"{len(vocab_items)} vocabulary items after inference and filtering"
+    )
 
     if config.include_audio:
-        audio_mapping = generate_audio_for_cards(vocab_items)
+        audio_mapping = generate_audio_for_cards(vocab_items, config.progress_logger)
     else:
         audio_mapping = {}
 
     # Export based on format
-    yield ConversionProgress(
-        stage=ConversionStage.PROCESSING,
-        message=f"Exporting to {config.output_format}",
-        progress=90,
-    )
+    config.progress_logger(f"Exporting to {config.output_format}")
 
     if config.output_format == OutputFormat.ANKI_PKG:
         create_anki_package(
@@ -213,13 +187,6 @@ def process_csv(config: CSVProcessConfig):
             output_path=config.output_path,
         )
         create_flashcard_pdf(gen_config)
-
-    yield ConversionProgress(
-        stage=ConversionStage.COMPLETE,
-        message="Processing complete",
-        progress=100,
-        filename=config.output_path.name,
-    )
 
 
 def extract_text_from_srt(srt_path: Path) -> List[str]:
@@ -276,11 +243,9 @@ Return only valid JSON, no other text."""
     return [VocabItem.model_validate(row) for row in chunk_results]
 
 
-def analyze_vocabulary(text_blocks: List[str]):
+def analyze_vocabulary(text_blocks: List[str], config: SRTProcessConfig):
     """Submit text to LLM for vocabulary analysis with caching"""
-    yield ConversionProgress(
-        stage=ConversionStage.STARTING, message="Starting vocabulary analysis"
-    )
+    config.progress_logger("Starting vocabulary analysis")
 
     all_results = []
     num_chunks = len(text_blocks) // settings.block_size + 1
@@ -291,18 +256,10 @@ def analyze_vocabulary(text_blocks: List[str]):
         progress = (current_chunk * 100) // num_chunks
         chunk_results = analyze_srt_section(text)
 
-        yield ConversionProgress(
-            stage=ConversionStage.PROCESSING,
-            message=f"Processing chunk {current_chunk}/{num_chunks}",
-            progress=progress,
-        )
+        config.progress_logger(f"Processing chunk {current_chunk}/{num_chunks}")
         all_results.extend(chunk_results)
 
-    yield ConversionProgress(
-        stage=ConversionStage.COMPLETE,
-        message="Vocabulary analysis complete",
-        result=all_results,
-    )
+    config.progress_logger("Vocabulary analysis complete")
 
 
 def infer_missing_fields(vocab_items: List[VocabItem]) -> List[VocabItem]:
@@ -398,7 +355,7 @@ def read_csv(file_content: str) -> tuple[str, pd.DataFrame]:
                 max_columns = len(df.columns)
                 best_separator = sep
         except Exception:
-            logging.info("Failed to read CSV with separator: %s", sep)
+            logging.debug("Failed to read CSV with separator: %s", sep)
             continue
 
     # Read preview with best separator
@@ -415,7 +372,7 @@ def read_csv(file_content: str) -> tuple[str, pd.DataFrame]:
 
 def infer_field_mapping(df: pd.DataFrame) -> dict:
     """Get LLM suggestions for CSV field mapping using column letters"""
-    logging.info("Inferring field mapping for CSV data")
+    logging.debug("Inferring field mapping for CSV data")
     preview_rows = df.head(25).fillna("").astype(str).values.tolist()
     sample_data = "\n".join(
         [",".join(df.columns), *[",".join(row) for row in preview_rows]]

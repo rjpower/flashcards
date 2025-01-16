@@ -14,11 +14,9 @@ from srt.config import cached_completion
 from srt.generate_pdf_html import PDFGeneratorConfig, create_flashcard_pdf
 from srt.images_from_pdf import ImageData, PdfOptions, extract_images_from_pdf
 from srt.lib import (
-    ConversionProgress,
-    ConversionStage,
     create_anki_package,
 )
-from srt.schema import OutputFormat, RawFlashCard
+from srt.schema import OutputFormat, ProgressLogger, RawFlashCard
 
 logger = logging.getLogger(__name__)
 
@@ -173,41 +171,20 @@ class AnalyzePdfConfig:
     output_path: Path
     output_format: OutputFormat
     card_type: CardType
+    progress_logger: ProgressLogger
 
 
 def process_pdf_images(
     config: AnalyzePdfConfig,
-) -> Generator[ConversionProgress, None, None]:
+):
     """Process PDF file by converting to images and analyzing with Gemini Vision"""
-
-    yield ConversionProgress(
-        stage=ConversionStage.STARTING, message="Starting PDF processing", progress=0
-    )
-
     # Extract images from PDF
-    yield ConversionProgress(
-        stage=ConversionStage.PROCESSING,
-        message="Extracting images from PDF",
-        progress=10,
-    )
-
+    config.progress_logger("Extracting images from PDF")
     images = extract_images_from_pdf(config.pdf_path, PdfOptions())
 
-    # Analyze all images together
-    yield ConversionProgress(
-        stage=ConversionStage.ANALYZING,
-        message=f"Analyzing {len(images)} pages",
-        progress=50,
-    )
-
+    config.progress_logger(f"Analyzing {len(images)} pages")
     all_cards = analyze_pdf_images(images, card_type=config.card_type)
-
-    # Export cards
-    yield ConversionProgress(
-        stage=ConversionStage.PROCESSING,
-        message=f"Exporting to {config.output_format}",
-        progress=90,
-    )
+    config.progress_logger(f"Exporting to {config.output_format}")
 
     if config.output_format == OutputFormat.ANKI_PKG:
         create_anki_package(
@@ -224,10 +201,3 @@ def process_pdf_images(
             output_path=config.output_path,
         )
         create_flashcard_pdf(pdf_config)
-
-    yield ConversionProgress(
-        stage=ConversionStage.COMPLETE,
-        message="Processing complete",
-        progress=100,
-        filename=config.output_path.name,
-    )

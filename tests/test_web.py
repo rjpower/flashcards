@@ -6,7 +6,7 @@ import pytest
 from flask import url_for
 
 from scripts.web import app
-from srt.schema import ConversionProgress, ConversionStage
+from srt.schema import ConversionProgress, ConversionStatus
 
 
 @pytest.fixture
@@ -22,8 +22,8 @@ def get_completion_filename(response):
         if line.startswith("data: "):
             event_data = json.loads(line[6:])
             progress = ConversionProgress.model_validate(event_data)
-            if progress.stage == ConversionStage.COMPLETE:
-                return progress.filename
+            if progress.status == ConversionStatus.DONE:
+                return progress.payload
     return None
 
 
