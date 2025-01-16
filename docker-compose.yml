@@ -1,0 +1,13 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      FLASK_DEBUG: 0
+      FLASK_ENV: "production"
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
