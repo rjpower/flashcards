@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Japanese SRT Vocabulary Extractor{% endblock %}</title>
+    <title>{% block title %}SRT Vocabulary Card Builder{% endblock %}</title>
     <style>
         body {
             font-family: system-ui, -apple-system, sans-serif;
@@ -92,10 +92,10 @@
     {% block extra_styles %}{% endblock %}
 </head>
 <body>
-    <h1>Japanese SRT Vocabulary Extractor</h1>
+    <h1>SRT Vocabulary Card Builder</h1>
 
     <div class="description">
-        <p>This tool helps you create Japanese language study materials from subtitle files (SRT) or vocabulary lists (CSV).
+        <p>This tool helps you create language study materials from subtitle files (SRT) or vocabulary lists (CSV).
            It can generate both Anki flashcard decks and printable PDF flashcards.</p>
 
         <p>It uses an ML model to extract or generate context sentences and
@@ -106,7 +106,7 @@
         <ol>
             <li><strong>SRT Upload:</strong>
                 <ul>
-                    <li>Upload a Japanese subtitle file (.srt)</li>
+                    <li>Upload a subtitle file (.srt)</li>
                     <li>Optionally provide a text file of known words to filter out</li>
                 </ul>
             </li>

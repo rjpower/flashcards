@@ -42,7 +42,7 @@ def test_csv_upload_with_known_words(client, tmp_path):
         "term_field": "B",
         "reading_field": "",
         "meaning_field": "C",
-        "context_jp_field": "",
+        "context_native_field": "",
         "context_en_field": "",
         "level_field": "",
         "separator": ",",
@@ -81,7 +81,7 @@ def test_csv_upload_without_known_words(client, tmp_path):
         "term_field": "B",
         "reading_field": "",
         "meaning_field": "C",
-        "context_jp_field": "",
+        "context_native_field": "",
         "context_en_field": "",
         "level_field": "",
         "separator": ",",
@@ -126,7 +126,7 @@ def test_csv_upload_with_audio(client, tmp_path):
         "term_field": "term",  # These field names will need to be adjusted
         "reading_field": "reading",  # based on the actual CSV structure
         "meaning_field": "meaning",
-        "context_jp_field": "",
+        "context_native_field": "",
         "context_en_field": "",
         "level_field": "",
         "separator": ",",

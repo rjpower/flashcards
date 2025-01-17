@@ -67,7 +67,7 @@ def flashcards_from_pdf(
     clean_name = clean_filename(pdf_path.stem)
     output_path = output_dir / f"{clean_name}_cards.{output_format}"
 
-    typer.echo(f"[blue]Analyzing PDF: {pdf_path}[/blue]")
+    print(f"[blue]Analyzing PDF: {pdf_path}[/blue]")
 
     config = AnalyzePdfConfig(
         pdf_path=pdf_path,
@@ -79,7 +79,7 @@ def flashcards_from_pdf(
 
     process_pdf_images(config)
 
-    typer.echo(f"[green]Output written to {output_path}[/green]")
+    print(f"[green]Output written to {output_path}[/green]")
 
 
 @app.command(name="flashcards_from_csv")
@@ -90,6 +90,12 @@ def flashcards_from_csv(
         exists=True,
         file_okay=True,
         dir_okay=False,
+    ),
+    output_format: str = typer.Option(
+        "apkg",
+        "--format",
+        "-f",
+        help="Output format (apkg or pdf)",
     ),
     mapping: Optional[str] = typer.Option(
         None,
@@ -110,23 +116,12 @@ def flashcards_from_csv(
         help="Glob pattern or path to CSV files containing words to ignore",
     ),
 ):
-    """Export vocabulary from SRT or CSV files directly to PDF flashcards."""
+    """Export vocabulary from CSV files directly to PDF flashcards."""
     output_dir = settings.output_dir
     output_dir.mkdir(exist_ok=True, parents=True)
 
     clean_name = input_path.stem.lower()
-    output_path = output_dir / f"{clean_name}.pdf"
-
-    if input_path.suffix.lower() == ".srt":
-        config = SRTProcessConfig(
-            srt_path=input_path,
-            output_path=output_path,
-            output_format=OutputFormat.PDF,
-            include_audio=False,
-            deck_name=clean_name,
-            progress_logger=progress_logger,
-        )
-        return process_srt(config)
+    output_path = output_dir / f"{clean_name}.{output_format}"
 
     # Parse mapping string or infer mapping
     field_mapping = None
@@ -140,18 +135,15 @@ def flashcards_from_csv(
             term=pairs.get("term"),
             reading=pairs.get("reading"),
             meaning=pairs.get("meaning"),
-            context_jp=pairs.get("context_jp"),
+            context_native=pairs.get("context_native"),
             context_en=pairs.get("context_en"),
-            level=pairs.get("level"),
         )
     else:
         # Infer mapping from CSV content
         result = infer_field_mapping(df)
         field_mapping = SourceMapping.model_validate(result["suggested_mapping"])
-        typer.echo(
-            f"[yellow]Inferred mapping ({result['confidence']} confidence):[/yellow]"
-        )
-        typer.echo(f"[yellow]{result['reasoning']}[/yellow]")
+        print(f"[yellow]Inferred mapping ({result['confidence']} confidence):[/yellow]")
+        print(f"[yellow]{result['reasoning']}[/yellow]")
 
     # load first few items using field mapping
     for i, row in df.head(5).iterrows():
@@ -159,11 +151,10 @@ def flashcards_from_csv(
             term=row[field_mapping.term],
             reading=row.get(field_mapping.reading),
             meaning=row.get(field_mapping.meaning),
-            level=row.get(field_mapping.level),
-            context_jp=row.get(field_mapping.context_jp),
+            context_native=row.get(field_mapping.context_native),
             context_en=row.get(field_mapping.context_en),
         )
-        typer.echo(f"[yellow]{vocab_item}[/yellow]")
+        print(f"[yellow]{vocab_item}[/yellow]")
 
     # Load ignore words if filter path provided
     ignore_words = set()
@@ -179,12 +170,12 @@ def flashcards_from_csv(
             filter_list = set([w.strip() for w in f.read_text().splitlines()])
             ignore_words = ignore_words.union(filter_list)
 
-        typer.echo(f"[yellow]Loaded {len(ignore_words)} words to ignore[/yellow]")
+        print(f"[yellow]Loaded {len(ignore_words)} words to ignore[/yellow]")
 
     config = CSVProcessConfig(
         df=df,
         output_path=output_path,
-        output_format=OutputFormat.PDF,
+        output_format=output_format,
         include_audio=False,
         deck_name=clean_name,
         field_mapping=field_mapping,
@@ -193,7 +184,7 @@ def flashcards_from_csv(
     )
     process_csv(config)
 
-    typer.echo(f"[green]PDF written to {output_path}[/green]", file=sys.stderr)
+    print(f"[green]PDF written to {output_path}[/green]", file=sys.stderr)
 
 
 @app.command(name="flashcards_from_srt")
@@ -218,7 +209,7 @@ def flashcard_from_srt(
         help="Include TTS audio in the output",
     ),
 ):
-    """Extract Japanese vocabulary from SRT subtitle files using LLM analysis."""
+    """Extract vocabulary from SRT subtitle files using LLM analysis."""
     output_dir = settings.output_dir
     output_dir.mkdir(exist_ok=True, parents=True)
 
@@ -237,7 +228,7 @@ def flashcard_from_srt(
     config.progress_logger = progress_logger
     process_srt(config)
 
-    typer.echo(f"[green]Output written to {output_path}[/green]", file=sys.stderr)
+    print(f"[green]Output written to {output_path}[/green]", file=sys.stderr)
 
 
 if __name__ == "__main__":

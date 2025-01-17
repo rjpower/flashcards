@@ -127,11 +127,13 @@ def create_anki_package(
     vocab_items: List[VocabItem],
     deck_name: str,
     audio_mapping: dict[str, AudioData],
+    src_lang: str = "English",
+    tgt_lang: str = "Japanese",
 ) -> genanki.Package:
     """Create an Anki deck from vocabulary items"""
     model = genanki.Model(
         settings.anki_model_id,
-        "Japanese Vocabulary",
+        f"{tgt_lang} Vocabulary",
         fields=[
             {"name": "Term"},
             {"name": "Reading"},
@@ -142,7 +144,7 @@ def create_anki_package(
         ],
         templates=[
             {
-                "name": "Japanese to English",
+                "name": f"{tgt_lang} to {src_lang}",
                 "qfmt": """
                     <div class="term">{{Term}}</div>
                     {{#Audio}}{{Audio}}{{/Audio}}
@@ -157,7 +159,7 @@ def create_anki_package(
                 """,
             },
             {
-                "name": "English to Japanese",
+                "name": f"{src_lang} to {tgt_lang}",
                 "qfmt": """
                     <div class="meaning">{{Meaning}}</div>
                     <div class="example-translation">{{ExampleTranslation}}</div>
@@ -187,7 +189,7 @@ def create_anki_package(
             item.term,
             item.reading,
             item.meaning,
-            item.context_jp or "",
+            item.context_native or "",
             item.context_en or "",
             "",  # Audio field placeholder
         ]

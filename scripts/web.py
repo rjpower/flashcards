@@ -251,7 +251,7 @@ def upload_csv():
         term=request.form["term_field"],
         reading=request.form["reading_field"],
         meaning=request.form["meaning_field"],
-        context_jp=request.form.get("context_jp_field"),
+        context_native=request.form.get("context_native_field"),
         context_en=request.form.get("context_en_field"),
         level=request.form.get("level_field"),
     )

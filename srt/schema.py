@@ -41,7 +41,7 @@ class VocabItem(BaseModel):
     term: str
     reading: Optional[str] = None
     meaning: Optional[str] = None
-    context_jp: Optional[str] = None
+    context_native: Optional[str] = None
     context_en: Optional[str] = None
     level: Optional[str] = None
     source: Optional[str] = None
@@ -56,7 +56,7 @@ class VocabItem(BaseModel):
 
     @property
     def front_context(self) -> Optional[str]:
-        return self.context_jp
+        return self.context_native
 
     @property
     def back(self) -> str:
@@ -73,7 +73,7 @@ class SourceMapping(BaseModel):
     term: str
     reading: Optional[str] = None
     meaning: Optional[str] = None
-    context_jp: Optional[str] = None
+    context_native: Optional[str] = None
     context_en: Optional[str] = None
     level: Optional[str] = None
 

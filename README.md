@@ -1,10 +1,12 @@
-# Japanese Learning Tools
+# Langauge Learning Tools
 
-A collection of tools for creating Japanese language learning materials from SRT subtitles and CSV files. Generate Anki flashcards and PDF study materials with automatic vocabulary analysis and optional text-to-speech audio.
+A collection of tools for creating language learning materials from SRT
+subtitles and CSV files. Generate Anki flashcards and PDF study materials with
+automatic vocabulary analysis and optional text-to-speech audio.
 
 ## Features
 
-- Extract vocabulary from Japanese SRT subtitle files using LLM analysis
+- Extract vocabulary from SRT subtitle files using LLM analysis
 - Import vocabulary from CSV files with flexible field mapping
 - Generate Anki decks (.apkg) with:
   - Term, reading, meaning

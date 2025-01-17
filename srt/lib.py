@@ -67,9 +67,10 @@ def load_csv_items(
             "term": row.get(mapping.term, "") if mapping.term else "",
             "reading": row.get(mapping.reading, "") if mapping.reading else "",
             "meaning": row.get(mapping.meaning, "") if mapping.meaning else "",
-            "context_jp": row.get(mapping.context_jp) if mapping.context_jp else None,
+            "context_native": (
+                row.get(mapping.context_native) if mapping.context_native else None
+            ),
             "context_en": row.get(mapping.context_en) if mapping.context_en else None,
-            "level": str(row.get(mapping.level)) if mapping.level else None,
             "source": "csv_import",
         }
 
@@ -202,14 +203,14 @@ def extract_text_from_srt(srt_path: Path) -> List[str]:
 
 
 def analyze_srt_section(text: str) -> List[VocabItem]:
-    prompt = f"""Extract Japanese vocabulary items from the following text.
+    prompt = f"""Extract vocabulary items from the following text.
 For each vocabulary item, find an actual example sentence from the provided text that uses it.
 Return a JSON array of objects with these fields:
 
-* term: The Japanese term
-* reading: The reading of the term using Hiragana or Katakana
+* term: The native language term
+* reading: The reading of the term (e.g. Hiragana or Katakana for Japanese, Pinyin for Chinese) 
 * meaning: The English meaning of the term
-* context_jp: The Japanese example sentence with the term in context
+* context_native: The native example sentence with the term in context
 * context_en: The English translation of the example sentence
 
 [
@@ -217,14 +218,14 @@ Return a JSON array of objects with these fields:
 "term": "獣医",
 "reading": "じゅうい",
 "meaning": "Veterinarian",
-"context_jp": "<ruby>医者<rt>いしゃ</rt></ruby>より<ruby>獣医<rt>じゅうい</rt></ruby>になりたい",
+"context_native": "<ruby>医者<rt>いしゃ</rt></ruby>より<ruby>獣医<rt>じゅうい</rt></ruby>になりたい",
 "context_en": "I want to become a veterinarian rather than a doctor",
 }},
 {{
 "term": "病院",
 "reading": "びょういん",
 "meaning": "Hospital",
-"context_jp": "<ruby>病院<rt>びょういん</rt></ruby>に行く",
+"context_native": "<ruby>病院<rt>びょういん</rt></ruby>に行く",
 "context_en": "Go to the hospital",
 }}
 ]
@@ -274,24 +275,22 @@ def infer_missing_fields(vocab_items: List[VocabItem]) -> List[VocabItem]:
     # Convert items to dict for LLM processing
     items_data = [item.model_dump(exclude_unset=False) for item in vocab_items]
 
-    prompt = f"""Given these Japanese vocabulary items, infer any missing fields.
+    prompt = f"""Given these vocabulary items, infer any missing fields.
 Required fields: term, reading, meaning
-Optional fields: context_jp, context_en, level
+Optional fields: context_native, context_en 
 
 For each item:
-- If reading is missing, provide the hiragana/katakana reading
+- If reading is missing, provide the _reading_, e.g. Hiragana or Katakana for Japanese, Pinyin for Chinese
 - If meaning is missing, provide the English meaning
 - If context is missing, generate natural example sentences
-- If level is missing, estimate JLPT level (N5-N1)
 
 Example of a complete item:
 {{
     "term": "図書館",
     "reading": "としょかん",
     "meaning": "library",
-    "context_jp": "<ruby>図書館<rt>としょかん</rt></ruby>で<ruby>本<rt>ほん</rt></ruby>を<ruby>借<rt>か</rt></ruby>りました",
+    "context_native": "<ruby>図書館<rt>としょかん</rt></ruby>で<ruby>本<rt>ほん</rt></ruby>を<ruby>借<rt>か</rt></ruby>りました",
     "context_en": "I borrowed a book from the library",
-    "level": "N5"
 }}
 
 Input items:
@@ -378,20 +377,19 @@ def infer_field_mapping(df: pd.DataFrame) -> dict:
         [",".join(df.columns), *[",".join(row) for row in preview_rows]]
     )
 
-    prompt = f"""Analyze this CSV data and suggest mappings for a Japanese vocabulary flashcard system.
-The system needs these fields: term, reading, meaning, and optionally context_jp, context_en, and level.
+    prompt = f"""Analyze this CSV data and suggest mappings for a vocabulary flashcard system.
+The system needs these fields: term, reading, meaning, and optionally context_native, context_en.
 The columns are labeled with letters (A, B, C, etc.).
 Look at the content in each column to suggest the best mapping.
 
 CSV Data (first few rows):
 {sample_data}
 
-"term" is mandatory, and should the Japanese word or phrase.
-"reading" is the pronunciation of the term in Hiragana or Katakana.
+"term" is mandatory, and should be the native word or phrase.
+"reading" is the pronunciation of the term, e.g. Hiragana or Katakana for Japanese, Pinyin for Chinese, etc.
 "meaning" is the English translation of the term.
-"context_jp" is a Japanese sentence using the term.
+"context_native" is a native sentence using the term.
 "context_en" is the English translation of the sentence.
-"level" is the JLPT level of the term (N5-N1).
 
 Return only valid JSON in this format:
 {{
@@ -399,9 +397,8 @@ Return only valid JSON in this format:
         "term": "A",
         "reading": "B",
         "meaning": "C",
-        "context_jp": "D" or null,
+        "context_native": "D" or null,
         "context_en": "E" or null,
-        "level": "F" or null,
     }},
     "confidence": "high|medium|low",
     "reasoning": "Brief explanation of why each column was mapped based on its content"
