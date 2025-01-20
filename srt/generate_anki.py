@@ -1,5 +1,8 @@
 import hashlib
 import logging
+import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence
@@ -77,7 +80,20 @@ hr#answer {
 """
 
 
-def generate_audio(term: str) -> Optional[bytes]:
+@dataclass
+class AudioModel:
+    language_code: str
+    model_name: str
+
+
+AUDIO_MODELS = {
+    "english": AudioModel("en-US", "en-US-Neural2-C"),
+    "japanese": AudioModel("ja-JP", "ja-JP-Neural2-B"),
+    "spanish": AudioModel("es-ES", "es-ES-Neural"),
+}
+
+
+def generate_audio(term: str, language: str) -> Optional[bytes]:
     """Generate TTS audio for a term using Vertex AI TTS with SSML"""
     cache_path = get_cache_path(f"tts_{term}", "mp3")
     if cache_path.exists():
@@ -85,9 +101,16 @@ def generate_audio(term: str) -> Optional[bytes]:
 
     response = litellm.speech(
         input=term,
-        model="openai/tts-1",
-        voice="alloy",
-        speed=0.8,
+        model="vertex_ai/cloud-tts",
+        voice={
+            "languageCode": AUDIO_MODELS[language].language_code,
+            "name": AUDIO_MODELS[language].model_name,
+        },
+        audioConfig={
+            "audioEncoding": "MP3",
+            "speakingRate": 0.8,
+            "pitch": 0.0,
+        },
     )
 
     if response:
@@ -109,16 +132,50 @@ class AudioData:
 
 def generate_audio_for_cards(
     items: Sequence[FlashCard],
-    progress_logger: Callable[[str], None] = logging.info,
+    language: str,
+    logger: Callable[[str], None],
+    max_workers: int = 16,
 ) -> dict[str, AudioData]:
-    # Generate audio if requested
+    """Generate audio for cards using parallel processing"""
     audio_mapping = {}
-    total = len(items)
-    for i, item in enumerate(items):
-        progress_logger(f"Generating audio {i+1}/{total}: {item.front}")
-        audio_data = generate_audio(item.front)
-        if audio_data:
-            audio_mapping[item.front] = AudioData(item.front, audio_data)
+    # Create a list of all terms we need to generate audio for
+    items_to_process = []
+    for item in items:
+        if item.front:
+            items_to_process.append((language, item.front))
+        if item.back:
+            items_to_process.append(("english", item.back))
+
+    total = len(items_to_process)
+    completed = 0
+
+    def _generate_audio_task(lang: str, term: str) -> tuple[str, Optional[bytes]]:
+        return term, generate_audio(term=term, language=lang)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all tasks
+        future_to_term = {
+            executor.submit(_generate_audio_task, lang, term): term
+            for (lang, term) in items_to_process
+        }
+
+        # Process completed tasks as they finish
+        for future in as_completed(future_to_term):
+            term = future_to_term[future]
+            completed += 1
+
+            logger(
+                f"Generated audio {term} -- {completed}/{total} ({completed/total*100:.1f}%)"
+            )
+
+            try:
+                term, audio_data = future.result()
+                if audio_data:
+                    audio_mapping[term] = AudioData(term, audio_data)
+            except Exception as e:
+                logger(f"Error generating audio for {term}: {str(e)}")
+
+    logger(f"Completed audio generation for {completed} terms")
     return audio_mapping
 
 
@@ -140,19 +197,21 @@ def create_anki_package(
             {"name": "Meaning"},
             {"name": "Example"},
             {"name": "ExampleTranslation"},
-            {"name": "Audio"},
+            {"name": "TermAudio"},
+            {"name": "MeaningAudio"},
         ],
         templates=[
             {
                 "name": f"{tgt_lang} to {src_lang}",
                 "qfmt": """
                     <div class="term">{{Term}}</div>
-                    {{#Audio}}{{Audio}}{{/Audio}}
+                    {{TermAudio}}
                     <div class="example">{{Example}}</div>
                 """,
                 "afmt": """
                     {{FrontSide}}
                     <hr id="answer">
+                    {{MeaningAudio}}
                     <div class="reading">{{Reading}}</div>
                     <div class="meaning">{{Meaning}}</div>
                     <div class="example-translation">{{ExampleTranslation}}</div>
@@ -162,13 +221,14 @@ def create_anki_package(
                 "name": f"{src_lang} to {tgt_lang}",
                 "qfmt": """
                     <div class="meaning">{{Meaning}}</div>
+                    {{MeaningAudio}}
                     <div class="example-translation">{{ExampleTranslation}}</div>
                 """,
                 "afmt": """
                     {{FrontSide}}
                     <hr id="answer">
                     <div class="term">{{Term}}</div>
-                    {{#Audio}}{{Audio}}{{/Audio}}
+                    {{TermAudio}}
                     <div class="reading">{{Reading}}</div>
                     <div class="example">{{Example}}</div>
                 """,
@@ -181,28 +241,32 @@ def create_anki_package(
     media_files = []
 
     # Create temporary directory for media files
-    temp_dir = settings.cache_dir / "temp_media"
-    temp_dir.mkdir(exist_ok=True, parents=True)
+    temp_dir = tempfile.TemporaryDirectory()
 
     for i, item in enumerate(vocab_items):
         fields = [
-            item.term,
-            item.reading,
-            item.meaning,
-            item.context_native or "",
-            item.context_en or "",
-            "",  # Audio field placeholder
+            item.front,
+            item.front_sub,
+            item.back,
+            item.front_context or "",
+            item.back_context or "",
+            "",  # Term audio placeholder
+            "",  # Meaning audio placeholder
         ]
 
         # Create a unique filename based on content hash
-        if item.term in audio_mapping:
-            audio_filename = (
-                f"audio_{hashlib.md5(item.term.encode()).hexdigest()[:8]}.mp3"
-            )
-            audio_path = temp_dir / audio_filename
-            audio_path.write_bytes(audio_mapping[item.term].data)
+        def _add_audio(term: str) -> str:
+            if term not in audio_mapping:
+                return ""
+
+            audio_filename = f"audio_{hashlib.md5(term.encode()).hexdigest()[:8]}.mp3"
+            audio_path = Path(temp_dir.name) / audio_filename
+            audio_path.write_bytes(audio_mapping[term].data)
             media_files.append(str(audio_path))
-            fields[5] = f"[sound:{audio_filename}]"
+            return f"[sound:{audio_filename}]"
+
+        fields[5] = _add_audio(item.front)
+        fields[6] = _add_audio(item.back)
 
         note = genanki.Note(model=model, fields=fields)
         deck.add_note(note)

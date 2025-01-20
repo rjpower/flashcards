@@ -135,10 +135,10 @@ def _analyze_image_batch(
     for card_data in result:
         card = RawFlashCard(
             front=card_data["front"],
-            front_sub=card_data.get("front_sub"),
-            front_context=card_data.get("front_context"),
+            front_sub=card_data.get("front_sub") or "",
+            front_context=card_data.get("front_context") or "",
             back=card_data["back"],
-            back_context=card_data.get("back_context"),
+            back_context=card_data.get("back_context") or "",
         )
         cards.append(card)
     return cards

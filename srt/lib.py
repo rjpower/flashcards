@@ -1,8 +1,8 @@
 import io
 import json
 import logging
-import multiprocessing.dummy
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Optional, Sequence
 
@@ -25,6 +25,7 @@ class SRTProcessConfig(BaseModel):
     srt_path: Path
     output_path: Path
     output_format: str
+    tgt_language: str = "japanese"
     include_audio: bool = False
     deck_name: Optional[str] = None
     ignore_words: set[str] = set()
@@ -39,6 +40,7 @@ class CSVProcessConfig(BaseModel):
     df: pd.DataFrame
     output_path: Path
     output_format: str
+    tgt_language: str = "japanese"
     include_audio: bool = False
     deck_name: Optional[str] = None
     field_mapping: SourceMapping
@@ -68,9 +70,9 @@ def load_csv_items(
             "reading": row.get(mapping.reading, "") if mapping.reading else "",
             "meaning": row.get(mapping.meaning, "") if mapping.meaning else "",
             "context_native": (
-                row.get(mapping.context_native) if mapping.context_native else None
+                row.get(mapping.context_native) if mapping.context_native else ""
             ),
-            "context_en": row.get(mapping.context_en) if mapping.context_en else None,
+            "context_en": row.get(mapping.context_en) if mapping.context_en else "",
             "source": "csv_import",
         }
 
@@ -81,7 +83,7 @@ def load_csv_items(
     return rows
 
 
-def _infer_fields(
+def _infer_missing_fields(
     chunk: Sequence[VocabItem], progress_logger: ProgressLogger = logging.info
 ) -> List[VocabItem]:
     """Process a chunk of DataFrame rows into vocabulary items"""
@@ -92,7 +94,7 @@ def _infer_fields(
 
     if incomplete_records:
         progress_logger(
-            f"Inferring fields for {len(incomplete_records)} incomplete records"
+            f"Inferring missing fields for {len(incomplete_records)} incomplete records"
         )
         return complete_records + infer_missing_fields(incomplete_records)
     return complete_records
@@ -103,18 +105,36 @@ def infer_missing_fields_parallel(
     progress_logger: ProgressLogger = logging.info,
     infer_chunk_size: int = 25,
 ):
-    with multiprocessing.dummy.Pool(processes=4) as pool:
-        chunk_results = pool.starmap(
-            _infer_fields,
-            [
-                (rows[i : i + infer_chunk_size], progress_logger)
-                for i in range(0, len(rows), infer_chunk_size)
-            ],
-            chunksize=1,
-        )
+    """Process vocabulary items in parallel chunks with progress tracking"""
+    # Split into chunks
+    chunks = [
+        rows[i : i + infer_chunk_size] for i in range(0, len(rows), infer_chunk_size)
+    ]
+    total = len(chunks)
+    completed = 0
+    all_results = []
 
-        # Flatten results
-        return [item for chunk in chunk_results for item in chunk]
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        # Submit all chunks for processing
+        future_to_chunk = {
+            executor.submit(_infer_missing_fields, chunk, progress_logger): chunk
+            for chunk in chunks
+        }
+
+        # Process completed chunks as they finish
+        for future in as_completed(future_to_chunk):
+            completed += 1
+            progress_logger(
+                f"Processed chunk {completed}/{total} ({completed/total*100:.1f}%)"
+            )
+
+            try:
+                chunk_results = future.result()
+                all_results.extend(chunk_results)
+            except Exception as e:
+                progress_logger(f"Error processing chunk: {str(e)}")
+
+    return all_results
 
 
 def process_srt(config: SRTProcessConfig):
@@ -132,7 +152,9 @@ def process_srt(config: SRTProcessConfig):
     audio_mapping = {}
     if config.include_audio:
         config.progress_logger("Generating audio files")
-        audio_mapping = generate_audio_for_cards(vocab_items, config.progress_logger)
+        audio_mapping = generate_audio_for_cards(
+            vocab_items, language=config.tgt_language, logger=config.progress_logger
+        )
 
     config.progress_logger(f"Exporting to {config.output_format}")
 
@@ -168,7 +190,9 @@ def process_csv(config: CSVProcessConfig):
     )
 
     if config.include_audio:
-        audio_mapping = generate_audio_for_cards(vocab_items, config.progress_logger)
+        audio_mapping = generate_audio_for_cards(
+            vocab_items, language=config.tgt_language, logger=config.progress_logger
+        )
     else:
         audio_mapping = {}
 
@@ -208,7 +232,7 @@ For each vocabulary item, find an actual example sentence from the provided text
 Return a JSON array of objects with these fields:
 
 * term: The native language term
-* reading: The reading of the term (e.g. Hiragana or Katakana for Japanese, Pinyin for Chinese) 
+* reading: The reading of the term (e.g. Hiragana or Katakana for Japanese, Pinyin for Chinese)
 * meaning: The English meaning of the term
 * context_native: The native example sentence with the term in context
 * context_en: The English translation of the example sentence
@@ -230,6 +254,14 @@ Return a JSON array of objects with these fields:
 }}
 ]
 
+If you don't have a value for the field, omit the field entirely, e.g. if there's
+no context to provide, don't include the context fields:
+
+{{
+"term": "こんにちは
+"meaning": "Good Afternoon, Good Day, Hello",
+}}
+
 Text to analyze:
 {text}
 
@@ -241,7 +273,14 @@ Return only valid JSON, no other text."""
             response_format={"type": "json_object"},
         )
     )
-    return [VocabItem.model_validate(row) for row in chunk_results]
+    results = []
+    for row in chunk_results:
+        try:
+            results.append(VocabItem.model_validate(row))
+        except Exception as e:
+            logging.error("Failed to validate vocab item: %s, %s %s", str(e), row)
+            assert False
+    return results
 
 
 def analyze_vocabulary(text_blocks: List[str], config: SRTProcessConfig):
@@ -254,13 +293,13 @@ def analyze_vocabulary(text_blocks: List[str], config: SRTProcessConfig):
     for i in range(0, len(text_blocks), settings.block_size):
         text = "\n".join(text_blocks[i : i + settings.block_size])
         current_chunk = i // settings.block_size + 1
-        progress = (current_chunk * 100) // num_chunks
         chunk_results = analyze_srt_section(text)
 
         config.progress_logger(f"Processing chunk {current_chunk}/{num_chunks}")
         all_results.extend(chunk_results)
 
     config.progress_logger("Vocabulary analysis complete")
+    return all_results
 
 
 def infer_missing_fields(vocab_items: List[VocabItem]) -> List[VocabItem]:
@@ -277,7 +316,7 @@ def infer_missing_fields(vocab_items: List[VocabItem]) -> List[VocabItem]:
 
     prompt = f"""Given these vocabulary items, infer any missing fields.
 Required fields: term, reading, meaning
-Optional fields: context_native, context_en 
+Optional fields: context_native, context_en
 
 For each item:
 - If reading is missing, provide the _reading_, e.g. Hiragana or Katakana for Japanese, Pinyin for Chinese

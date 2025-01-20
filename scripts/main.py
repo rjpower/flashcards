@@ -1,5 +1,6 @@
 import logging
 import sys
+from glob import glob
 from pathlib import Path
 from typing import List, Optional
 
@@ -48,10 +49,10 @@ def flashcards_from_pdf(
         dir_okay=False,
     ),
     output_format: str = typer.Option(
-        "pdf",
+        "apkg",
         "--format",
         "-f",
-        help="Output format (pdf or apkg)",
+        help="Output format (apkg or pdf)",
     ),
     card_type: CardType = typer.Option(
         CardType.VOCAB,
@@ -59,13 +60,29 @@ def flashcards_from_pdf(
         "-c",
         help="Type of card to generate (vocab or sentences)",
     ),
+    deck_name: Optional[str] = typer.Option(
+        None,
+        "--deck-name",
+        "-d",
+        help="Name of the Anki deck to create",
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None,
+        "--output_file",
+        "-o",
+        help="Path to save the output file",
+    ),
 ):
     """Extract learning content from PDF files and create flashcards."""
-    output_dir = settings.output_dir
-    output_dir.mkdir(exist_ok=True, parents=True)
-
     clean_name = clean_filename(pdf_path.stem)
-    output_path = output_dir / f"{clean_name}_cards.{output_format}"
+    deck_name = deck_name or clean_name
+
+    if output_file:
+        output_path = output_file
+    else:
+        output_dir = settings.output_dir
+        output_dir.mkdir(exist_ok=True, parents=True)
+        output_path = output_dir / f"{deck_name}_cards.{output_format}"
 
     print(f"[blue]Analyzing PDF: {pdf_path}[/blue]")
 
@@ -103,25 +120,41 @@ def flashcards_from_csv(
         "-m",
         help="Field mapping for CSV files (e.g. 'term=word,reading=kana')",
     ),
-    separator: str = typer.Option(
-        ",",
-        "--separator",
-        "-s",
-        help="CSV separator character",
-    ),
     filter_path: List[Path] = typer.Option(
         [],
         "--filter",
         "-i",
         help="Glob pattern or path to CSV files containing words to ignore",
     ),
+    include_audio: bool = typer.Option(
+        False,
+        "--audio",
+        "-a",
+        help="Include TTS audio in the output",
+    ),
+    deck_name: Optional[str] = typer.Option(
+        None,
+        "--deck-name",
+        "-d",
+        help="Name of the Anki deck to create",
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None,
+        "--output_file",
+        "-o",
+        help="Path to save the output file",
+    ),
 ):
     """Export vocabulary from CSV files directly to PDF flashcards."""
-    output_dir = settings.output_dir
-    output_dir.mkdir(exist_ok=True, parents=True)
-
     clean_name = input_path.stem.lower()
-    output_path = output_dir / f"{clean_name}.{output_format}"
+    deck_name = deck_name or clean_name
+
+    if output_file:
+        output_path = output_file
+    else:
+        output_dir = settings.output_dir
+        output_dir.mkdir(exist_ok=True, parents=True)
+        output_path = output_dir / f"{deck_name}.{output_format}"
 
     # Parse mapping string or infer mapping
     field_mapping = None
@@ -149,15 +182,23 @@ def flashcards_from_csv(
     for i, row in df.head(5).iterrows():
         vocab_item = VocabItem(
             term=row[field_mapping.term],
-            reading=row.get(field_mapping.reading),
-            meaning=row.get(field_mapping.meaning),
-            context_native=row.get(field_mapping.context_native),
-            context_en=row.get(field_mapping.context_en),
+            reading=row.get(field_mapping.reading, ""),
+            meaning=row.get(field_mapping.meaning, ""),
+            context_native=row.get(field_mapping.context_native, ""),
+            context_en=row.get(field_mapping.context_en, ""),
         )
         print(f"[yellow]{vocab_item}[/yellow]")
 
     # Load ignore words if filter path provided
     ignore_words = set()
+    filter_paths_expanded = []
+    for path in filter_path:
+        if "*" in str(path):
+            filter_paths_expanded.extend(Path(p) for p in glob(str(path)))
+        else:
+            filter_paths_expanded.append(path)
+    filter_path = filter_paths_expanded
+
     for f in filter_path:
         if f.suffix.lower() == ".csv":
             filter_df = pd.read_csv(f, dtype=str)
@@ -176,15 +217,15 @@ def flashcards_from_csv(
         df=df,
         output_path=output_path,
         output_format=output_format,
-        include_audio=False,
-        deck_name=clean_name,
+        include_audio=include_audio,
+        deck_name=deck_name,
         field_mapping=field_mapping,
         ignore_words=ignore_words,
         progress_logger=progress_logger,
     )
     process_csv(config)
 
-    print(f"[green]PDF written to {output_path}[/green]", file=sys.stderr)
+    print(f"[green]{output_format} written to {output_path}[/green]", file=sys.stderr)
 
 
 @app.command(name="flashcards_from_srt")
@@ -208,20 +249,36 @@ def flashcard_from_srt(
         "-a",
         help="Include TTS audio in the output",
     ),
+    deck_name: Optional[str] = typer.Option(
+        None,
+        "--deck-name",
+        "-d",
+        help="Name of the Anki deck to create",
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None,
+        "--output_file",
+        "-o",
+        help="Path to save the output file",
+    ),
 ):
     """Extract vocabulary from SRT subtitle files using LLM analysis."""
-    output_dir = settings.output_dir
-    output_dir.mkdir(exist_ok=True, parents=True)
-
     clean_name = srt_path.stem.lower()
-    output_path = output_dir / f"{clean_name}.{output_format}"
+    deck_name = deck_name or clean_name
+
+    if output_file:
+        output_path = output_file
+    else:
+        output_dir = settings.output_dir
+        output_dir.mkdir(exist_ok=True, parents=True)
+        output_path = output_dir / f"{deck_name}.{output_format}"
 
     config = SRTProcessConfig(
         srt_path=srt_path,
         output_path=output_path,
         output_format=OutputFormat(output_format),
         include_audio=include_audio,
-        deck_name=clean_name,
+        deck_name=deck_name,
         progress_logger=progress_logger,
     )
 

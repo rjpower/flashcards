@@ -27,7 +27,7 @@ def get_completion_filename(response):
     return None
 
 
-def test_csv_upload_with_known_words(client, tmp_path):
+def csv_upload_with_known_words(client, tmp_path):
     """Test CSV upload with known words filter"""
     app.config["UPLOAD_FOLDER"] = tmp_path
 
@@ -65,6 +65,10 @@ def test_csv_upload_with_known_words(client, tmp_path):
     assert response.status_code == 200
     filtered_pdf = response.data
     return len(filtered_pdf)  # Return size for comparison
+
+
+def test_csv_upload_with_known_words(client, tmp_path):
+    csv_upload_with_known_words(client, tmp_path)
 
 
 def test_csv_upload_without_known_words(client, tmp_path):
@@ -105,7 +109,7 @@ def test_csv_upload_without_known_words(client, tmp_path):
     unfiltered_pdf = response.data
 
     # Compare with filtered PDF size
-    filtered_size = test_csv_upload_with_known_words(client, tmp_path)
+    filtered_size = csv_upload_with_known_words(client, tmp_path)
     print(filtered_size, len(unfiltered_pdf))
     assert filtered_size < len(
         unfiltered_pdf

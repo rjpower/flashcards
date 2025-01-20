@@ -31,20 +31,20 @@ class FlashCard(Protocol):
 
 class RawFlashCard(BaseModel):
     front: str
-    front_sub: Optional[str] = None
-    front_context: Optional[str] = None
+    front_sub: str = ""
+    front_context: str = ""
     back: str
-    back_context: Optional[str] = None
+    back_context: str = ""
 
 
 class VocabItem(BaseModel):
     term: str
-    reading: Optional[str] = None
-    meaning: Optional[str] = None
-    context_native: Optional[str] = None
-    context_en: Optional[str] = None
-    level: Optional[str] = None
-    source: Optional[str] = None
+    reading: str = ""
+    meaning: str = ""
+    context_native: str = ""
+    context_en: str = ""
+    level: str = ""
+    source: str = ""
 
     @property
     def front(self) -> str:
