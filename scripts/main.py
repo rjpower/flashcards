@@ -132,6 +132,12 @@ def flashcards_from_csv(
         "-a",
         help="Include TTS audio in the output",
     ),
+    tgt_language: str = typer.Option(
+        "japanese",
+        "--language",
+        "-l",
+        help="Target language for the flashcards (e.g. japanese, chinese)",
+    ),
     deck_name: Optional[str] = typer.Option(
         None,
         "--deck-name",
@@ -140,7 +146,7 @@ def flashcards_from_csv(
     ),
     output_file: Optional[Path] = typer.Option(
         None,
-        "--output_file",
+        "--output-file",
         "-o",
         help="Path to save the output file",
     ),
@@ -220,6 +226,7 @@ def flashcards_from_csv(
         include_audio=include_audio,
         deck_name=deck_name,
         field_mapping=field_mapping,
+        tgt_language=tgt_language,
         ignore_words=ignore_words,
         progress_logger=progress_logger,
     )

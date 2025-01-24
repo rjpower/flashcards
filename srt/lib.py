@@ -218,6 +218,7 @@ def process_srt(config: SRTProcessConfig):
             vocab_items,
             config.deck_name or clean_filename(config.srt_path.name),
             audio_mapping=audio_mapping,
+            tgt_language=config.tgt_language,
         )
     else:
         gen_config = PDFGeneratorConfig(
@@ -259,6 +260,7 @@ def process_csv(config: CSVProcessConfig):
             vocab_items,
             config.deck_name or "csv_import_deck",
             audio_mapping=audio_mapping,
+            tgt_language=config.tgt_language,
         )
     else:
         gen_config = PDFGeneratorConfig(

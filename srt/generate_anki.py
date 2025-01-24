@@ -96,12 +96,62 @@ AUDIO_MODELS = {
     "english": AudioModel("en-US", "en-US-Neural2-C"),
     "japanese": AudioModel("ja-JP", "ja-JP-Neural2-B"),
     "spanish": AudioModel("es-ES", "es-ES-Neural"),
+    "chinese": AudioModel("cmn-CN", "cmn-CN-Standard-A"),
+    "arabic": AudioModel("ar-XA", "ar-XA-Neural2-A"),
+    "basque": AudioModel("eu-ES", "eu-ES-Standard-A"),
+    "bengali": AudioModel("bn-IN", "bn-IN-Neural2-A"),
+    "bulgarian": AudioModel("bg-BG", "bg-BG-Standard-A"),
+    "catalan": AudioModel("ca-ES", "ca-ES-Standard-A"),
+    "czech": AudioModel("cs-CZ", "cs-CZ-Wavenet-A"),
+    "danish": AudioModel("da-DK", "da-DK-Neural2-D"),
+    "dutch_be": AudioModel("nl-BE", "nl-BE-Standard-A"),
+    "dutch_nl": AudioModel("nl-NL", "nl-NL-Neural2-A"),
+    "filipino": AudioModel("fil-PH", "fil-PH-Neural2-A"),
+    "finnish": AudioModel("fi-FI", "fi-FI-Wavenet-A"),
+    "french_ca": AudioModel("fr-CA", "fr-CA-Neural2-A"),
+    "french_fr": AudioModel("fr-FR", "fr-FR-Neural2-A"),
+    "galician": AudioModel("gl-ES", "gl-ES-Standard-A"),
+    "german": AudioModel("de-DE", "de-DE-Neural2-A"),
+    "greek": AudioModel("el-GR", "el-GR-Neural2-A"),
+    "gujarati": AudioModel("gu-IN", "gu-IN-Wavenet-A"),
+    "hebrew": AudioModel("he-IL", "he-IL-Neural2-A"),
+    "hindi": AudioModel("hi-IN", "hi-IN-Neural2-A"),
+    "hungarian": AudioModel("hu-HU", "hu-HU-Wavenet-A"),
+    "indonesian": AudioModel("id-ID", "id-ID-Wavenet-A"),
+    "italian": AudioModel("it-IT", "it-IT-Neural2-A"),
+    "kannada": AudioModel("kn-IN", "kn-IN-Wavenet-A"),
+    "korean": AudioModel("ko-KR", "ko-KR-Neural2-A"),
+    "latvian": AudioModel("lv-LV", "lv-LV-Standard-A"),
+    "lithuanian": AudioModel("lt-LT", "lt-LT-Standard-A"),
+    "malay": AudioModel("ms-MY", "ms-MY-Wavenet-A"),
+    "malayalam": AudioModel("ml-IN", "ml-IN-Wavenet-A"),
+    "mandarin_cn": AudioModel("cmn-CN", "cmn-CN-Neural2-A"),
+    "mandarin_tw": AudioModel("cmn-TW", "cmn-TW-Wavenet-A"),
+    "marathi": AudioModel("mr-IN", "mr-IN-Wavenet-A"),
+    "norwegian": AudioModel("nb-NO", "nb-NO-Wavenet-A"),
+    "polish": AudioModel("pl-PL", "pl-PL-Wavenet-A"),
+    "portuguese_br": AudioModel("pt-BR", "pt-BR-Neural2-A"),
+    "portuguese_pt": AudioModel("pt-PT", "pt-PT-Wavenet-A"),
+    "punjabi": AudioModel("pa-IN", "pa-IN-Wavenet-A"),
+    "romanian": AudioModel("ro-RO", "ro-RO-Wavenet-A"),
+    "russian": AudioModel("ru-RU", "ru-RU-Neural2-A"),
+    "serbian": AudioModel("sr-RS", "sr-RS-Standard-A"),
+    "slovak": AudioModel("sk-SK", "sk-SK-Wavenet-A"),
+    "spanish_es": AudioModel("es-ES", "es-ES-Neural2-A"),
+    "spanish_us": AudioModel("es-US", "es-US-Neural2-A"),
+    "swedish": AudioModel("sv-SE", "sv-SE-Wavenet-A"),
+    "tamil": AudioModel("ta-IN", "ta-IN-Wavenet-A"),
+    "telugu": AudioModel("te-IN", "te-IN-Standard-A"),
+    "thai": AudioModel("th-TH", "th-TH-Neural2-C"),
+    "turkish": AudioModel("tr-TR", "tr-TR-Neural2-A"),
+    "ukrainian": AudioModel("uk-UA", "uk-UA-Wavenet-A"),
+    "vietnamese": AudioModel("vi-VN", "vi-VN-Neural2-A"),
 }
 
 
 def generate_audio(term: str, language: str) -> Optional[bytes]:
     """Generate TTS audio for a term using Vertex AI TTS with SSML"""
-    cache_path = get_cache_path(f"tts_{term}", "mp3")
+    cache_path = get_cache_path(f"tts_{term}_{language}", "mp3")
     if cache_path.exists():
         return cache_path.read_bytes()
 
@@ -192,13 +242,13 @@ def create_anki_package(
     vocab_items: List[VocabItem],
     deck_name: str,
     audio_mapping: dict[str, AudioData],
+    tgt_language: str,
     src_lang: str = "English",
-    tgt_lang: str = "Japanese",
 ) -> genanki.Package:
     """Create an Anki deck from vocabulary items"""
     model = genanki.Model(
         _id_from_name(deck_name),
-        f"{tgt_lang} Vocabulary",
+        f"{tgt_language} Vocabulary",
         fields=[
             {"name": "Term"},
             {"name": "Reading"},
@@ -210,7 +260,7 @@ def create_anki_package(
         ],
         templates=[
             {
-                "name": f"{tgt_lang} to {src_lang}",
+                "name": f"{tgt_language} to {src_lang}",
                 "qfmt": """
                     <div class="term">{{Term}}</div>
                     {{TermAudio}}
@@ -226,7 +276,7 @@ def create_anki_package(
                 """,
             },
             {
-                "name": f"{src_lang} to {tgt_lang}",
+                "name": f"{src_lang} to {tgt_language}",
                 "qfmt": """
                     <div class="meaning">{{Meaning}}</div>
                     {{MeaningAudio}}

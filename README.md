@@ -1,4 +1,4 @@
-# Langauge Learning Tools
+# SRT/CSV to Flashcard Converter
 
 A collection of tools for creating language learning materials from SRT
 subtitles and CSV files. Generate Anki flashcards and PDF study materials with
@@ -66,6 +66,12 @@ You can exclude terms based on the term or translation by specifying a `--filter
 
 ```bash
 uv run scripts/main.py flashcards_from_csv ./sample/n3.csv --filter=known.txt --filter=./sample/n4.csv --filter=./sample/n5.csv --output=pdf
+```
+
+You can change the language used for TTS audio using the `--language` flag:
+
+```bash
+uv run scripts/main.py flashcards_from_csv ./sample/n3.csv --language=japanese
 ```
 
 SRTs operate the same way:
