@@ -264,7 +264,7 @@ def flashcard_from_srt(
     ),
     output_file: Optional[Path] = typer.Option(
         None,
-        "--output_file",
+        "--output-file",
         "-o",
         help="Path to save the output file",
     ),

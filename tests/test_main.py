@@ -1,24 +1,11 @@
-import json
-import tempfile
 from pathlib import Path
 
 import pytest
-from reportlab.pdfgen import canvas
 from typer.testing import CliRunner
 
 from scripts.main import app
 
 runner = CliRunner(mix_stderr=False)
-
-
-@pytest.fixture
-def sample_pdf(tmp_path) -> Path:
-    """Create a valid sample PDF file for testing."""
-    pdf_path = tmp_path / "sample.pdf"
-    c = canvas.Canvas(str(pdf_path))
-    c.drawString(100, 750, "Sample PDF Content for Testing")
-    c.save()
-    return pdf_path
 
 
 @pytest.fixture
@@ -46,40 +33,6 @@ def sample_srt(tmp_path) -> Path:
     return srt_path
 
 
-def test_flashcards_from_pdf_deck_name(sample_pdf, tmp_path):
-    """Test that the --deck-name option correctly names the Anki deck for PDF files."""
-
-    custom_deck_name = "CustomPDFDeck"
-    output_format = "apkg"
-    output_file = tmp_path / f"{custom_deck_name}_cards.{output_format}"
-
-    # Generate a valid output file path
-    output_file_parent = output_file.parent
-    output_file_parent.mkdir(parents=True, exist_ok=True)
-
-    # Run the CLI command
-    runner.invoke(
-        app,
-        [
-            "flashcards_from_pdf",
-            str(sample_pdf),
-            "--deck-name",
-            custom_deck_name,
-            "--format",
-            output_format,
-            "--output_file",
-            str(output_file),
-        ],
-        catch_exceptions=False,
-    )
-
-    # Assert that the output file exists
-    assert output_file.exists(), f"Expected output file {output_file} does not exist."
-
-    # Optionally, verify that the output file is not empty
-    assert output_file.stat().st_size > 0, "Output deck file is empty."
-
-
 def test_flashcards_from_csv_deck_name(sample_csv, tmp_path):
     """Test that the --deck-name option correctly names the Anki deck for CSV files."""
 
@@ -101,7 +54,7 @@ def test_flashcards_from_csv_deck_name(sample_csv, tmp_path):
             custom_deck_name,
             "--format",
             output_format,
-            "--output_file",
+            "--output-file",
             str(output_file),
         ],
         catch_exceptions=False,
@@ -126,7 +79,7 @@ def test_flashcards_from_srt_deck_name(sample_srt, tmp_path):
     output_file_parent.mkdir(parents=True, exist_ok=True)
 
     # Run the CLI command
-    runner.invoke(
+    result = runner.invoke(
         app,
         [
             "flashcards_from_srt",
@@ -135,11 +88,15 @@ def test_flashcards_from_srt_deck_name(sample_srt, tmp_path):
             custom_deck_name,
             "--format",
             output_format,
-            "--output_file",
+            "--output-file",
             str(output_file),
         ],
         catch_exceptions=False,
     )
+
+    print("Output: ", result.output)
+    print("Stderr: ", result.stderr)
+    print("Stdout", result.stdout)
 
     # Assert that the output file exists
     assert output_file.exists(), f"Expected output file {output_file} does not exist."

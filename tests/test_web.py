@@ -20,6 +20,7 @@ def get_completion_filename(response):
     """Helper to extract filename from completion event"""
     for line in response.get_data().decode().split("\n\n"):
         if line.startswith("data: "):
+            print(line)
             event_data = json.loads(line[6:])
             progress = ConversionProgress.model_validate(event_data)
             if progress.status == ConversionStatus.DONE:
@@ -27,14 +28,18 @@ def get_completion_filename(response):
     return None
 
 
-def csv_upload_with_known_words(client, tmp_path):
-    """Test CSV upload with known words filter"""
+def csv_upload(client, tmp_path, filter_words=False):
+    """Helper to upload CSV file with optional known words filter"""
     app.config["UPLOAD_FOLDER"] = tmp_path
 
     csv_content = "A,B,C\n1,漢字,meaning\n2,言葉,word\n3,本,book"
     csv_file = io.BytesIO(csv_content.encode("utf-8"))
-    filter_content = "漢字\n本"  # Filter out 2 of 3 words
-    filter_file = io.BytesIO(filter_content.encode("utf-8"))
+    
+    if filter_words:
+        filter_content = "漢字\n本"  # Filter out 2 of 3 words
+        filter_file = io.BytesIO(filter_content.encode("utf-8"))
+    else:
+        filter_file = io.BytesIO(b"")  # Empty filter
 
     data = {
         "file": (csv_file, "test.csv"),
@@ -60,60 +65,22 @@ def csv_upload_with_known_words(client, tmp_path):
     filename = get_completion_filename(response)
     assert filename is not None, "Did not receive completion event"
 
-    # Download the filtered PDF
+    # Download the PDF
     response = client.get(f"/download/{filename}")
     assert response.status_code == 200
-    filtered_pdf = response.data
-    return len(filtered_pdf)  # Return size for comparison
+    pdf_content = response.data
+    return len(pdf_content)  # Return size for comparison
 
 
 def test_csv_upload_with_known_words(client, tmp_path):
-    csv_upload_with_known_words(client, tmp_path)
+    csv_upload(client, tmp_path, filter_words=True)
 
 
 def test_csv_upload_without_known_words(client, tmp_path):
     """Test CSV upload without known words filter"""
-    app.config["UPLOAD_FOLDER"] = tmp_path
-
-    csv_content = "A,B,C\n1,漢字,meaning\n2,言葉,word\n3,本,book"
-    csv_file = io.BytesIO(csv_content.encode("utf-8"))
-    empty_filter = io.BytesIO(b"")
-
-    data = {
-        "file": (csv_file, "test.csv"),
-        "filter_file": (empty_filter, "known.txt"),
-        "term_field": "B",
-        "reading_field": "",
-        "meaning_field": "C",
-        "context_native_field": "",
-        "context_en_field": "",
-        "level_field": "",
-        "separator": ",",
-        "format": "pdf",
-    }
-
-    response = client.post(
-        "/upload/csv",
-        data=data,
-        content_type="multipart/form-data",
-        follow_redirects=True,
-    )
-
-    assert response.status_code == 200
-    filename = get_completion_filename(response)
-    assert filename is not None, "Did not receive completion event"
-
-    # Download the unfiltered PDF
-    response = client.get(f"/download/{filename}")
-    assert response.status_code == 200
-    unfiltered_pdf = response.data
-
-    # Compare with filtered PDF size
-    filtered_size = csv_upload_with_known_words(client, tmp_path)
-    print(filtered_size, len(unfiltered_pdf))
-    assert filtered_size < len(
-        unfiltered_pdf
-    ), "Filtered PDF should be smaller than unfiltered PDF"
+    unfiltered_size = csv_upload(client, tmp_path, filter_words=False)
+    filtered_size = csv_upload(client, tmp_path, filter_words=True)
+    assert filtered_size < unfiltered_size, "Filtered PDF should be smaller than unfiltered PDF"
 
 
 def srt_upload(client, tmp_path, include_audio=False, filter_words=None):
