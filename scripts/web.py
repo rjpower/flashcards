@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import threading
 import time
@@ -167,6 +168,8 @@ def upload_srt():
     srt_path.write_bytes(file_content)
     tracker = ProcessingTracker()
 
+    include_audio = bool(request.form.get("include_audio"))
+
     def _process_srt():
         try:
             output_dir = settings.output_dir
@@ -180,7 +183,7 @@ def upload_srt():
                 srt_path=srt_path,
                 output_path=output_path,
                 output_format=OutputFormat(output_format),
-                include_audio=bool(request.form.get("include_audio")),
+                include_audio=include_audio,
                 deck_name=clean_name,
                 ignore_words=ignore_words,
                 progress_logger=tracker.log_progress,
@@ -213,6 +216,8 @@ def analyze_csv():
 
     separator, df = read_csv(preview_data)
     suggestions = infer_field_mapping(df)
+
+    df = df.dropna(axis="columns")
 
     return jsonify(
         {
@@ -268,7 +273,8 @@ def upload_csv():
     output_dir.mkdir(exist_ok=True, parents=True)
 
     clean_name = clean_filename(secure_filename(file.filename))
-    output_path = output_dir / f"{clean_name}.{output_format}"
+    nonce = hashlib.md5(file_content.encode("utf-8")).hexdigest()
+    output_path = output_dir / f"{clean_name}-{nonce}.{output_format}"
 
     tracker = ProcessingTracker()
     config = CSVProcessConfig(
@@ -307,7 +313,7 @@ def download(filename):
 
 
 def main():
-    app.run(debug=True, host="0.0.0.0", port=8000)
+    app.run(debug=True, host="127.0.0.1", port=8000)
 
 
 if __name__ == "__main__":

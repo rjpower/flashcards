@@ -7,30 +7,27 @@
     <style>
         body {
             font-family: system-ui, -apple-system, sans-serif;
-            max-width: 800px;
+            max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
             line-height: 1.6;
         }
-        .description {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-        }
-        .description h3 {
-            color: #2c3e50;
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 40px;
             margin-top: 20px;
-            margin-bottom: 10px;
         }
-        .description ul, .description ol {
-            padding-left: 25px;
+        .instructions {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 8px;
+            position: sticky;
+            top: 20px;
+            height: min-content;
         }
-        .description li {
-            margin: 8px 0;
-        }
-        .description ul ul {
-            margin: 5px 0;
+        .main-content {
+            padding: 0 20px;
         }
         .upload-form {
             margin: 20px 0;
@@ -61,7 +58,16 @@
         .nav-tabs {
             display: flex;
             gap: 10px;
-            margin: 20px 0;
+            margin: 0 0 20px 0;
+        }
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+            .instructions {
+                position: static;
+                margin-bottom: 20px;
+            }
         }
         .nav-tabs a {
             padding: 10px 20px;
@@ -94,32 +100,34 @@
 <body>
     <h1>SRT Vocabulary Card Builder</h1>
 
-    <div class="description">
-        <p>This tool helps you create language study materials from subtitle files (SRT) or vocabulary lists (CSV).
-           It can generate both Anki flashcard decks and printable PDF flashcards.</p>
+    <div class="container">
+        <div class="instructions">
+            <h3>How to Use:</h3>
+            <ol>
+                <li><strong>SRT Upload:</strong>
+                    <ul>
+                        <li>Upload a subtitle file (.srt)</li>
+                        <li>Optionally provide a text file of known words to filter out</li>
+                    </ul>
+                </li>
+                <li><strong>CSV Upload:</strong>
+                    <ul>
+                        <li>Upload a CSV file containing vocabulary</li>
+                        <li>Map your CSV columns to vocabulary fields (Missing information will be automatically inferred)</li>
+                    </ul>
+                </li>
+            </ol>
 
-        <p>It uses an ML model to extract or generate context sentences and
-        audio. You can choose to output your cards as an Anki package or as
-        a PDF to print out.</p>
+            <p>This tool helps you create language study materials from subtitle files (SRT) or vocabulary lists (CSV).
+               It can generate both Anki flashcard decks and printable PDF flashcards.</p>
 
-        <h3>How to Use:</h3>
-        <ol>
-            <li><strong>SRT Upload:</strong>
-                <ul>
-                    <li>Upload a subtitle file (.srt)</li>
-                    <li>Optionally provide a text file of known words to filter out</li>
-                </ul>
-            </li>
-            <li><strong>CSV Upload:</strong>
-                <ul>
-                    <li>Upload a CSV file containing vocabulary</li>
-                    <li>Map your CSV columns to vocabulary fields (Missing information will be automatically inferred)</li>
-                </ul>
-            </li>
-        </ol>
-    </div>
+            <p>It uses an ML model to extract or generate context sentences and
+            audio. You can choose to output your cards as an Anki package or as
+            a PDF to print out.</p>
+        </div>
 
-    <div class="nav-tabs">
+        <div class="main-content">
+            <div class="nav-tabs">
         <a href="/srt" {% if active_tab == 'srt' %}class="active"{% endif %}>SRT Upload</a>
         <a href="/csv" {% if active_tab == 'csv' %}class="active"{% endif %}>CSV Upload</a>
     </div>
@@ -138,8 +146,86 @@
             status.innerHTML = lines.join('<br>');
             status.style.display = 'block';
         }
+
+        function updateProgress(progress) {
+            const progressBar = document.querySelector('.progress-bar');
+            if (progress !== null) {
+                progressBar.style.width = `${progress}%`;
+            }
+        }
+
+        function handleUploadResponse(reader) {
+            const decoder = new TextDecoder();
+            reader.read().then(function processText({ done, value }) {
+                if (done) return;
+                const events = decoder.decode(value).split('\n\n');
+                events.forEach(event => {
+                    if (event.startsWith('data: ')) {
+                        const data = JSON.parse(event.slice(6));
+                        console.log(data);
+                        const time = new Date().toLocaleTimeString();
+                        logToStatus(`[${time}] ${data.message}`);
+
+                        updateProgress(data.progress);
+
+                        if (data.status === 'done' && data.payload) {
+                            const link = document.createElement('a');
+                            link.innerHTML = 'Finished - download output here.';
+                            link.href = `/download/${data.payload}`;
+                            link.download = data.filename;
+                            const status = document.getElementById('status');
+                            status.appendChild(document.createElement("br"));
+                            status.appendChild(link);
+                        } else if (data.status === 'error') {
+                            const progressBar = document.querySelector('.progress-bar');
+                            progressBar.style.backgroundColor = '#dc3545';
+                            logToStatus(`Error: ${data.message}`);
+                        }
+                    }
+                });
+                return reader.read().then(processText);
+            });
+        }
+
+        function handleFormSubmit(formId, uploadUrl) {
+            const form = document.getElementById(formId);
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const progress = document.getElementById('progress');
+                const progressBar = document.querySelector('.progress-bar');
+                progress.style.display = 'block';
+                progressBar.style.width = '0%';
+
+                document.getElementById('status').innerHTML = '';
+                progressBar.style.backgroundColor = '#007bff';
+                logToStatus('Starting...');
+
+                const formData = new FormData(form);
+
+                try {
+                    const response = await fetch(uploadUrl, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || 'Upload failed');
+                    }
+
+                    handleUploadResponse(response.body.getReader());
+
+                } catch (error) {
+                    logToStatus(`Error: ${error.message}`);
+                    const progressBar = document.querySelector('.progress-bar');
+                    progressBar.style.backgroundColor = '#dc3545';
+                }
+            });
+        }
     </script>
-    {% block content %}{% endblock %}
+            {% block content %}{% endblock %}
+        </div>
+    </div>
 
     {% block scripts %}
     {% endblock %}

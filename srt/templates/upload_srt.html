@@ -26,68 +26,7 @@
 
 {% block scripts %}
 <script>
-    async function handleSubmit(e) {
-        e.preventDefault();
-        const progress = document.getElementById('progress');
-        const progressBar = document.querySelector('.progress-bar');
-        const progressText = document.querySelector('.progress-text');
-        const formData = new FormData(e.target);
-
-        try {
-            progress.style.display = 'block';
-            progressBar.style.width = '0%';
-            progressText.textContent = 'Starting...';
-
-            const response = await fetch('/upload/srt', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Upload failed');
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-
-            while (true) {
-                const {value, done} = await reader.read();
-                if (done) break;
-
-                const events = decoder.decode(value).split('\n\n');
-                for (const event of events) {
-                    if (event.startsWith('data: ')) {
-                        const data = JSON.parse(event.slice(6));
-                        const time = new Date().toLocaleTimeString();
-                        logToStatus(`[${time}] ${data.message}`);
-
-                        if (data.progress !== null) {
-                            progressBar.style.width = `${data.progress}%`;
-                        }
-
-                        if (data.stage === 'done' && data.filename) {
-                            const link = document.createElement('a');
-                            link.href = `/download/${data.filename}`;
-                            link.download = data.filename;
-                            document.body.appendChild(link);
-                            link.click();
-                            document.body.removeChild(link);
-                            logToStatus('Download complete!');
-                        } else if (data.stage === 'error') {
-                            progressBar.style.backgroundColor = '#dc3545';
-                            logToStatus(`Error: ${data.message}`);
-                        }
-                    }
-                }
-            }
-
-        } catch (error) {
-            logToStatus(`Error: ${error.message}`);
-            progressBar.style.backgroundColor = '#dc3545';
-        }
-    }
-
-    document.getElementById('srtForm').onsubmit = handleSubmit;
+    // Initialize form submission using helper
+    handleFormSubmit('srtForm', '/upload/srt');
 </script>
 {% endblock %}

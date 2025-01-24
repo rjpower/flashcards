@@ -83,7 +83,7 @@ def load_csv_items(
     return rows
 
 
-def _infer_missing_fields(
+def _infer_missing_fields_chunk(
     chunk: Sequence[VocabItem], progress_logger: ProgressLogger = logging.info
 ) -> List[VocabItem]:
     """Process a chunk of DataFrame rows into vocabulary items"""
@@ -92,15 +92,70 @@ def _infer_missing_fields(
     ]
     incomplete_records = [item for item in chunk if item not in complete_records]
 
-    if incomplete_records:
-        progress_logger(
-            f"Inferring missing fields for {len(incomplete_records)} incomplete records"
+    if not incomplete_records:
+        return complete_records
+
+    progress_logger(
+        f"Inferring missing fields for {len(incomplete_records)} incomplete records"
+    )
+
+    items_data = [item.model_dump(exclude_unset=False) for item in incomplete_records]
+
+    prompt = f"""Given these vocabulary items, infer any missing fields.
+Required fields: term, reading, meaning
+Optional fields: context_native, context_en
+
+For each item:
+- If reading is missing, provide the _reading_, e.g. Hiragana or Katakana for Japanese, Pinyin for Chinese
+- If meaning is missing, provide the English meaning
+- If context_native and context_en is missing, generate a natural example sentence which does a good job of illustrating and disambiguating the term
+- context_native should be the native language sentence with the term in context
+- context_en should be the English translation of the example sentence
+
+Example output:
+[
+  {{
+      "term": "図書館",
+      "reading": "としょかん",
+      "meaning": "library",
+      "context_native": "<ruby>図書館<rt>としょかん</rt></ruby>で<ruby>本<rt>ほん</rt></ruby>を<ruby>借<rt>か</rt></ruby>りました",
+      "context_en": "I borrowed a book from the library"
+  }},
+  {{
+      "term": "病院",
+      "reading": "びょういん",
+      "meaning": "hospital",
+      "context_native": "<ruby>病院<rt>びょういん</rt></ruby>に行きます",
+      "context_en": "I will go to the hospital"
+  }}
+]
+
+Inputs:
+{json.dumps(items_data, ensure_ascii=False, sort_keys=True)}
+
+Return only valid JSON array with complete items in same format."""
+
+    completed_items = json.loads(
+        cached_completion(
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
         )
-        return complete_records + infer_missing_fields(incomplete_records)
-    return complete_records
+    )
+
+    assert isinstance(completed_items, list), completed_items
+
+    for item in completed_items:
+        try:
+            VocabItem.model_validate(item)
+        except Exception as e:
+            progress_logger(f"Failed to validate item: {str(e)}, {item}")
+
+    return complete_records + [
+        VocabItem.model_validate(item) for item in completed_items
+    ]
 
 
-def infer_missing_fields_parallel(
+def infer_missing_fields(
     rows: Sequence[VocabItem],
     progress_logger: ProgressLogger = logging.info,
     infer_chunk_size: int = 25,
@@ -114,10 +169,9 @@ def infer_missing_fields_parallel(
     completed = 0
     all_results = []
 
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        # Submit all chunks for processing
+    with ThreadPoolExecutor(max_workers=16) as executor:
         future_to_chunk = {
-            executor.submit(_infer_missing_fields, chunk, progress_logger): chunk
+            executor.submit(_infer_missing_fields_chunk, chunk, progress_logger): chunk
             for chunk in chunks
         }
 
@@ -183,7 +237,7 @@ def process_csv(config: CSVProcessConfig):
     config.progress_logger(
         f"{len(vocab_items)} vocabulary items after filtering and dedup."
     )
-    vocab_items = infer_missing_fields_parallel(vocab_items, config.progress_logger)
+    vocab_items = infer_missing_fields(vocab_items, config.progress_logger)
     vocab_items = filter_known_vocabulary(vocab_items, config.ignore_words)
     config.progress_logger(
         f"{len(vocab_items)} vocabulary items after inference and filtering"
@@ -300,50 +354,6 @@ def analyze_vocabulary(text_blocks: List[str], config: SRTProcessConfig):
 
     config.progress_logger("Vocabulary analysis complete")
     return all_results
-
-
-def infer_missing_fields(vocab_items: List[VocabItem]) -> List[VocabItem]:
-    """Infer missing fields for vocabulary items using LLM.
-
-    Args:
-        vocab_items: List of vocabulary items, each must have at least a term field
-
-    Returns:
-        List of vocabulary items with inferred fields filled in
-    """
-    # Convert items to dict for LLM processing
-    items_data = [item.model_dump(exclude_unset=False) for item in vocab_items]
-
-    prompt = f"""Given these vocabulary items, infer any missing fields.
-Required fields: term, reading, meaning
-Optional fields: context_native, context_en
-
-For each item:
-- If reading is missing, provide the _reading_, e.g. Hiragana or Katakana for Japanese, Pinyin for Chinese
-- If meaning is missing, provide the English meaning
-- If context is missing, generate natural example sentences
-
-Example of a complete item:
-{{
-    "term": "図書館",
-    "reading": "としょかん",
-    "meaning": "library",
-    "context_native": "<ruby>図書館<rt>としょかん</rt></ruby>で<ruby>本<rt>ほん</rt></ruby>を<ruby>借<rt>か</rt></ruby>りました",
-    "context_en": "I borrowed a book from the library",
-}}
-
-Input items:
-{json.dumps(items_data, ensure_ascii=False, indent=2)}
-
-Return only valid JSON array with complete items in same format."""
-
-    completed_items = json.loads(
-        cached_completion(
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-        )
-    )
-    return [VocabItem.model_validate(item) for item in completed_items]
 
 
 def filter_known_vocabulary(

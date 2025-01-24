@@ -68,7 +68,7 @@ def flashcards_from_pdf(
     ),
     output_file: Optional[Path] = typer.Option(
         None,
-        "--output_file",
+        "--output-file",
         "-o",
         help="Path to save the output file",
     ),

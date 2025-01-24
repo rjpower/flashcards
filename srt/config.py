@@ -31,16 +31,8 @@ class Settings(BaseSettings):
         default=100, description="Number of text blocks to process in each LLM batch"
     )
     llm_model: str = Field(
-        default="gemini/gemini-2.0-flash-exp",
+        default="gemini/gemini-1.5-flash",
         description="LLM model to use for vocabulary analysis",
-    )
-
-    # Anki card settings
-    anki_model_id: int = Field(
-        default=1091735104, description="Unique identifier for the Anki note type"
-    )
-    anki_deck_id: int = Field(
-        default=2059400110, description="Unique identifier for the Anki deck"
     )
 
 
@@ -74,7 +66,14 @@ def cached_completion(messages: List[dict], **kw) -> str:
     Returns:
         Parsed response from LLM
     """
-    cache_key = json.dumps(messages, sort_keys=True)
+    filtered_kw = {
+        key: value
+        for key, value in kw.items()
+        if isinstance(value, (int, str, float, dict, list))
+    }
+    filtered_kw["model"] = settings.llm_model
+
+    cache_key = json.dumps({"messages": messages, **filtered_kw}, sort_keys=True)
     cache_path = get_cache_path(cache_key)
     if cache_path.exists():
         return cache_path.read_text(encoding="utf-8")

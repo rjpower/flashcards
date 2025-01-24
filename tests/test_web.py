@@ -116,6 +116,64 @@ def test_csv_upload_without_known_words(client, tmp_path):
     ), "Filtered PDF should be smaller than unfiltered PDF"
 
 
+def srt_upload(client, tmp_path, include_audio=False, filter_words=None):
+    """Helper to upload SRT file"""
+    app.config["UPLOAD_FOLDER"] = tmp_path
+
+    srt_content = "1\n00:00:01,000 --> 00:00:02,000\nHello\n\n2\n00:00:03,000 --> 00:00:04,000\nWorld"
+    srt_file = io.BytesIO(srt_content.encode("utf-8"))
+    filter_content = "Hello" if filter_words else ""
+    filter_file = io.BytesIO(filter_content.encode("utf-8")) if filter_words else None
+
+    data = {
+        "file": (srt_file, "test.srt"),
+        "format": "apkg",
+    }
+    if filter_file:
+        data["filter_file"] = (filter_file, "known.txt")
+    if include_audio:
+        data["include_audio"] = "1"
+
+    response = client.post(
+        "/upload/srt",
+        data=data,
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    filename = get_completion_filename(response)
+    assert filename is not None, "Did not receive completion event"
+
+    # Download the generated file
+    response = client.get(f"/download/{filename}")
+    assert response.status_code == 200
+    return response.data, filename
+
+
+def test_srt_upload_without_filter(client, tmp_path):
+    """Test SRT upload without known words filter"""
+    srt_data, filename = srt_upload(client, tmp_path)
+    assert filename.endswith(".apkg"), "Output should be Anki package"
+    assert len(srt_data) > 0, "Anki package should not be empty"
+
+
+def test_srt_upload_with_filter(client, tmp_path):
+    """Test SRT upload with known words filter"""
+    srt_data, filename = srt_upload(client, tmp_path, filter_words=True)
+    assert filename.endswith(".apkg"), "Output should be Anki package"
+    assert len(srt_data) > 0, "Anki package should not be empty"
+    # Additional assertions can be added to verify filtered content
+
+
+def test_srt_upload_with_audio(client, tmp_path):
+    """Test SRT upload with audio generation"""
+    srt_data, filename = srt_upload(client, tmp_path, include_audio=True)
+    assert filename.endswith(".apkg"), "Output should be Anki package with audio"
+    assert len(srt_data) > 0, "Anki package should not be empty"
+    # Additional assertions can be added to verify audio inclusion
+
+
 def test_csv_upload_with_audio(client, tmp_path):
     """Test CSV upload with audio generation"""
     app.config["UPLOAD_FOLDER"] = tmp_path

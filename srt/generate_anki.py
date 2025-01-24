@@ -13,6 +13,12 @@ import litellm
 from srt.config import get_cache_path, settings
 from srt.schema import FlashCard, VocabItem
 
+
+def _id_from_name(name: str) -> int:
+    # Use first 8 chars of md5 as hex, convert to int
+    return int(hashlib.md5(name.encode()).hexdigest()[:8], 16)
+
+
 ANKI_CARD_CSS = """
 .card {
     font-family: "Hiragino Sans", "Hiragino Kaku Gothic Pro", "Yu Gothic", Meiryo, sans-serif;
@@ -142,7 +148,9 @@ def generate_audio_for_cards(
     items_to_process = []
     for item in items:
         if item.front:
-            items_to_process.append((language, item.front))
+            items_to_process.append(
+                (language, item.front_sub if item.front_sub else item.front)
+            )
         if item.back:
             items_to_process.append(("english", item.back))
 
@@ -189,7 +197,7 @@ def create_anki_package(
 ) -> genanki.Package:
     """Create an Anki deck from vocabulary items"""
     model = genanki.Model(
-        settings.anki_model_id,
+        _id_from_name(deck_name),
         f"{tgt_lang} Vocabulary",
         fields=[
             {"name": "Term"},
@@ -237,7 +245,7 @@ def create_anki_package(
         css=ANKI_CARD_CSS,
     )
 
-    deck = genanki.Deck(settings.anki_deck_id, deck_name)
+    deck = genanki.Deck(_id_from_name(deck_name), deck_name)
     media_files = []
 
     # Create temporary directory for media files
@@ -265,7 +273,7 @@ def create_anki_package(
             media_files.append(str(audio_path))
             return f"[sound:{audio_filename}]"
 
-        fields[5] = _add_audio(item.front)
+        fields[5] = _add_audio(item.front_sub if item.front_sub else item.front)
         fields[6] = _add_audio(item.back)
 
         note = genanki.Note(model=model, fields=fields)
