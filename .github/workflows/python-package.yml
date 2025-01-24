@@ -22,4 +22,6 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Test with python ${{ matrix.python-version }}
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: uv run --frozen pytest
