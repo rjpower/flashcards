@@ -101,16 +101,15 @@ def _infer_missing_fields_chunk(
 
     items_data = [item.model_dump(exclude_unset=False) for item in incomplete_records]
 
-    prompt = f"""Given these vocabulary items, infer any missing fields.
-Required fields: term, reading, meaning
-Optional fields: context_native, context_en
+    prompt = f"""Given these vocabulary items, infer missing fields.
 
-For each item:
-- If reading is missing, provide the _reading_, e.g. Hiragana or Katakana for Japanese, Pinyin for Chinese
-- If meaning is missing, provide the English meaning
-- If context_native and context_en is missing, generate a natural example sentence which does a good job of illustrating and disambiguating the term
-- context_native should be the native language sentence with the term in context
-- context_en should be the English translation of the example sentence
+Fields:
+
+- term: the native language term
+- reading: the phonetic reading of the term if relevant -- use Hiragana or Katakana for Japanese, Pinyin for Chinese.
+- meaning: meaning of the term in English, if multiple meanings are common, separate with commas
+- context_native: a sentence in the native language that uses the term in context.
+- context_en: English translation of the example sentence.
 
 Example output:
 [
@@ -118,15 +117,15 @@ Example output:
       "term": "図書館",
       "reading": "としょかん",
       "meaning": "library",
-      "context_native": "<ruby>図書館<rt>としょかん</rt></ruby>で<ruby>本<rt>ほん</rt></ruby>を<ruby>借<rt>か</rt></ruby>りました",
-      "context_en": "I borrowed a book from the library"
+      "context_native": "<ruby>図書館<rt>としょかん</rt>から<ruby>本<rt>ほん</rt></ruby>を<ruby>借<rt>か</rt></ruby>りました。",
+      "context_en": "I borrowed a book from the library."
   }},
   {{
       "term": "病院",
       "reading": "びょういん",
       "meaning": "hospital",
-      "context_native": "<ruby>病院<rt>びょういん</rt></ruby>に行きます",
-      "context_en": "I will go to the hospital"
+      "context_native": "<ruby>病院<rt>びょういん</rt></ruby>に行きました。",
+      "context_en": "I went to the hospital."
   }}
 ]
 
@@ -219,6 +218,7 @@ def process_srt(config: SRTProcessConfig):
             config.deck_name or clean_filename(config.srt_path.name),
             audio_mapping=audio_mapping,
             tgt_language=config.tgt_language,
+            logger=config.progress_logger,
         )
     else:
         gen_config = PDFGeneratorConfig(

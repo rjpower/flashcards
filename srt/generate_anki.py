@@ -1,17 +1,25 @@
 import hashlib
-import logging
+import re
 import tempfile
-import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from email.policy import default
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence
 
+import bs4
 import genanki
-import litellm
+from google.cloud import texttospeech
+from google.oauth2 import service_account
+from bs4 import BeautifulSoup
 
 from srt.config import get_cache_path, settings
 from srt.schema import FlashCard, VocabItem
+
+# Fixed Model IDs
+DEFAULT_MODEL_ID = 1607392319
+CLOZE_MODEL_ID = 1607392350
 
 
 def _id_from_name(name: str) -> int:
@@ -150,31 +158,45 @@ AUDIO_MODELS = {
 
 
 def generate_audio(term: str, language: str) -> Optional[bytes]:
-    """Generate TTS audio for a term using Vertex AI TTS with SSML"""
+    """Generate TTS audio for a term using Google Cloud Text-to-Speech API"""
     cache_path = get_cache_path(f"tts_{term}_{language}", "mp3")
     if cache_path.exists():
         return cache_path.read_bytes()
 
-    response = litellm.speech(
-        input=term,
-        model="vertex_ai/cloud-tts",
-        voice={
-            "languageCode": AUDIO_MODELS[language].language_code,
-            "name": AUDIO_MODELS[language].model_name,
-        },
-        audioConfig={
-            "audioEncoding": "MP3",
-            "speakingRate": 0.8,
-            "pitch": 0.0,
-        },
+    if language not in AUDIO_MODELS:
+        return None
+
+    credentials = service_account.Credentials.from_service_account_file(
+        settings.google_credentials_path
+    )
+    tts_client = texttospeech.TextToSpeechClient(credentials=credentials)
+
+    voice = texttospeech.VoiceSelectionParams(
+        language_code=AUDIO_MODELS[language].language_code,
+        name=AUDIO_MODELS[language].model_name,
     )
 
-    if response:
-        audio_data = response.content
+    audio_config = texttospeech.AudioConfig(
+        audio_encoding=texttospeech.AudioEncoding.MP3,
+        speaking_rate=0.8,
+        pitch=0.0,
+    )
 
+    synthesis_input = texttospeech.SynthesisInput(text=term)
+
+    try:
+        response = tts_client.synthesize_speech(
+            input=synthesis_input,
+            voice=voice,
+            audio_config=audio_config,
+        )
+        audio_data = response.audio_content
         if audio_data:
             cache_path.write_bytes(audio_data)
             return audio_data
+    except Exception as e:
+        print(f"Google TTS API error for term '{term}': {str(e)}")
+        return None
 
     return None
 
@@ -231,10 +253,29 @@ def generate_audio_for_cards(
                 if audio_data:
                     audio_mapping[term] = AudioData(term, audio_data)
             except Exception as e:
-                logger(f"Error generating audio for {term}: {str(e)}")
+                stack = traceback.format_exc()
+                logger(f"Error generating audio for {term}: {str(e)} -- \n{stack}")
 
     logger(f"Completed audio generation for {completed} terms")
     return audio_mapping
+
+
+def create_cloze_html(text: str, term: str, cloze_id: int) -> Optional[str]:
+    """
+    Replaces the first occurrence of the term in the HTML text with a cloze deletion.
+    Preserves all HTML tags.
+    """
+    # text = bs4.BeautifulSoup(text, "html.parser").text
+    # convert the ruby tags in the text into character[reading] for ease of cloze deletion
+    text = re.sub(r"<ruby>(.*?)<rt>(.*?)</rt></ruby>", r"\1[\2]", text)
+
+    if term not in text:
+        return None
+
+    text = text.replace(term, f"{{{{c{cloze_id}::{term}}}}}", 1)
+
+    print(text)
+    return text
 
 
 def create_anki_package(
@@ -244,10 +285,29 @@ def create_anki_package(
     audio_mapping: dict[str, AudioData],
     tgt_language: str,
     src_lang: str = "English",
+    logger: Callable[[str], None] = print,
 ) -> genanki.Package:
-    """Create an Anki deck from vocabulary items"""
-    model = genanki.Model(
-        _id_from_name(deck_name),
+    """
+    Create Anki decks from vocabulary items with Default and Cloze card types.
+
+    Generates two decks:
+    - `{deck_name}::Default` using the Default model.
+    - `{deck_name}::Cloze` using the Cloze model.
+
+    Args:
+        output_path (Path): Path to save the Anki package.
+        vocab_items (List[VocabItem]): List of vocabulary items.
+        deck_name (str): Base name for the decks.
+        audio_mapping (dict[str, AudioData]): Mapping of terms to their audio data.
+        tgt_language (str): Target language for the deck.
+        src_lang (str, optional): Source language. Defaults to "English".
+
+    Returns:
+        genanki.Package: The generated Anki package containing both decks.
+    """
+    # Initialize models with fixed IDs
+    default_model = genanki.Model(
+        DEFAULT_MODEL_ID,
         f"{tgt_language} Vocabulary",
         fields=[
             {"name": "Term"},
@@ -295,14 +355,41 @@ def create_anki_package(
         css=ANKI_CARD_CSS,
     )
 
-    deck = genanki.Deck(_id_from_name(deck_name), deck_name)
+    # cloze_model = genanki.Model(
+    #     CLOZE_MODEL_ID,
+    #     f"{tgt_language} Cloze Vocabulary",
+    #     fields=[
+    #         {"name": "ClozeExample"},
+    #         {"name": "Translation"},
+    #     ],
+    #     templates=[
+    #         {
+    #             "name": f"{tgt_language} Cloze",
+    #             "qfmt": "{{cloze:ClozeExample}}",
+    #             "afmt": "{{cloze:ClozeExample}}<br>{{Translation}}",
+    #         },
+    #     ],
+    #     css=ANKI_CARD_CSS,
+    #     model_type=genanki.Model.CLOZE,
+    # )
+
+    # Create two decks: Default and Cloze
+    default_deck = genanki.Deck(
+        deck_id=_id_from_name(f"{deck_name}::Default"), name=f"{deck_name}::Default"
+    )
+
+    # cloze_deck = genanki.Deck(
+    #     deck_id=_id_from_name(f"{deck_name}::Cloze"), name=f"{deck_name}::Cloze"
+    # )
+
     media_files = []
 
     # Create temporary directory for media files
     temp_dir = tempfile.TemporaryDirectory()
 
     for i, item in enumerate(vocab_items):
-        fields = [
+        # Prepare fields for Default model
+        fields_default = [
             item.front,
             item.front_sub,
             item.back,
@@ -316,20 +403,41 @@ def create_anki_package(
         def _add_audio(term: str) -> str:
             if term not in audio_mapping:
                 return ""
-
             audio_filename = f"audio_{hashlib.md5(term.encode()).hexdigest()[:8]}.mp3"
             audio_path = Path(temp_dir.name) / audio_filename
             audio_path.write_bytes(audio_mapping[term].data)
             media_files.append(str(audio_path))
             return f"[sound:{audio_filename}]"
 
-        fields[5] = _add_audio(item.front_sub if item.front_sub else item.front)
-        fields[6] = _add_audio(item.back)
+        fields_default[5] = _add_audio(item.front_sub if item.front_sub else item.front)
+        fields_default[6] = _add_audio(item.back)
 
-        note = genanki.Note(model=model, fields=fields)
-        deck.add_note(note)
+        # Create and add Default note
+        note_default = genanki.Note(model=default_model, fields=fields_default)
+        default_deck.add_note(note_default)
 
-    package = genanki.Package(deck)
+        # Create cloze deletion for front_context only
+        # cloze_text = None
+        # if item.front_context:
+        #     cloze_text = create_cloze_html(item.front_context, item.term, 1)
+        #     if not cloze_text:
+        #         cloze_text = create_cloze_html(item.front_context, item.reading, 1)
+
+        # if cloze_text:
+        #     fields_cloze = [cloze_text, item.back_context]
+
+        #     # Create and add Cloze note
+        #     note_cloze = genanki.Note(
+        #         model=cloze_model,
+        #         fields=fields_cloze
+        #     )
+        #     cloze_deck.add_note(note_cloze)
+        # else:
+        #     logger(f"Skipping cloze card for term '{item.term}' as no deletion was made in front_context.")
+        #     continue  # Skip adding this cloze note
+
+    package = genanki.Package([default_deck])
     package.media_files = media_files
     package.write_to_file(output_path)
+
     return package

@@ -31,8 +31,14 @@ class Settings(BaseSettings):
         default=100, description="Number of text blocks to process in each LLM batch"
     )
     llm_model: str = Field(
-        default="gemini/gemini-1.5-flash",
+        default="gemini/gemini-2.0-flash",
         description="LLM model to use for vocabulary analysis",
+    )
+
+    # Google Credentials Path
+    google_credentials_path: Path = Field(
+        default=Path("data/google_credentials.json"),
+        description="Path to Google Cloud credentials JSON file",
     )
 
 
