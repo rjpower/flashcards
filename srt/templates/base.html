@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}SRT Vocabulary Card Builder{% endblock %}</title>
+    <title>{% block title %}Vocabulary Card Builder{% endblock %}</title>
     <style>
         body {
             font-family: system-ui, -apple-system, sans-serif;
@@ -47,14 +47,123 @@
             min-width: 120px;
             text-align: right;
         }
-        .status {
-            margin: 20px 0;
-            padding: 10px;
-            border-radius: 4px;
+        .processing-modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 600px;
+            max-width: 90vw;
+            background: white;
+            box-shadow: 0 0 30px rgba(0,0,0,0.2);
+            border-radius: 8px;
+            z-index: 1000;
             display: none;
         }
-        .success { background: #e6ffe6; }
-        .error { background: #ffe6e6; }
+
+        .modal-header {
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #ddd;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 1.1em;
+            font-weight: 500;
+        }
+
+        .spinner, .close-icon {
+            width: 24px;
+            height: 24px;
+            margin-left: 10px;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .close-icon {
+            position: relative;
+            cursor: pointer;
+        }
+
+        .close-icon::before,
+        .close-icon::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 2px;
+            background: #666;
+            transform-origin: center;
+        }
+
+        .close-icon::before {
+            transform: translate(-50%, -50%) rotate(45deg);
+        }
+
+        .close-icon::after {
+            transform: translate(-50%, -50%) rotate(-45deg);
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .status {
+            margin: 0;
+            height: 300px;
+            overflow-y: auto;
+            padding: 15px 20px;
+            font-family: monospace;
+            font-size: 14px;
+            line-height: 1.4;
+            background: white;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .status-line {
+            margin: 3px 0;
+            padding: 3px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .status-line:last-child {
+            border-bottom: none;
+        }
+        .status-timestamp {
+            color: #666;
+            margin-right: 8px;
+        }
+        .status-error {
+            color: #dc3545;
+        }
+        .status-success {
+            color: #28a745;
+        }
+
+        .processing-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.6);
+            display: none;
+            z-index: 999;
+            backdrop-filter: blur(2px);
+        }
+
+        button:disabled {
+            background: #ccc !important;
+            cursor: not-allowed;
+        }
+
         .nav-tabs {
             display: flex;
             gap: 10px;
@@ -102,11 +211,20 @@
 
     <div class="container">
         <div class="instructions">
-            <h3>How to Use:</h3>
+            <p>This tool helps you create language study materials from subtitle
+            files (SRT) or vocabulary lists (CSV).  It can generate both Anki
+            flashcard decks and printable PDF flashcards.</p>
+
+            <p>It uses an ML model to extract or generate context sentences and
+            audio. You can choose to output your cards as an Anki package or as
+            a PDF to print out.</p>
+
             <ol>
-                <li><strong>SRT Upload:</strong>
+                <li><strong>SRT (subtitle) Upload:</strong>
                     <ul>
-                        <li>Upload a subtitle file (.srt)</li>
+                        <li>Upload a subtitle file (.srt) - you can download these using extensions like
+                            <a href="https://chromewebstore.google.com/detail/subadub/jamiekdimmhnnemaaimmdahnahfmfdfk">Subadub</a>
+                        </li>
                         <li>Optionally provide a text file of known words to filter out</li>
                     </ul>
                 </li>
@@ -117,13 +235,6 @@
                     </ul>
                 </li>
             </ol>
-
-            <p>This tool helps you create language study materials from subtitle files (SRT) or vocabulary lists (CSV).
-               It can generate both Anki flashcard decks and printable PDF flashcards.</p>
-
-            <p>It uses an ML model to extract or generate context sentences and
-            audio. You can choose to output your cards as an Anki package or as
-            a PDF to print out.</p>
         </div>
 
         <div class="main-content">
@@ -132,73 +243,73 @@
         <a href="/csv" {% if active_tab == 'csv' %}class="active"{% endif %}>CSV Upload</a>
     </div>
 
-    <div id="status" class="status"></div>
-    <div id="progress">
-        <div class="progress-bar"></div>
-        <div class="progress-text"></div>
+    <div class="processing-overlay"></div>
+    <div class="processing-modal">
+        <div class="modal-header">
+            <span>Processing your request...</span>
+            <div class="spinner"></div>
+            <div class="close-icon" style="display: none;" onclick="hideProcessingStatus()"></div>
+        </div>
+        <div id="status" class="status"></div>
     </div>
 
     <script>
-        function logToStatus(message) {
+        function showProcessingStatus() {
+            document.querySelector('.processing-modal').style.display = 'block';
+            document.querySelector('.processing-overlay').style.display = 'block';
+            document.getElementById('status').innerHTML = '';
+            document.querySelector('.spinner').style.display = 'block';
+            document.querySelector('.close-icon').style.display = 'none';
+        }
+
+        function hideProcessingStatus() {
+            document.querySelector('.processing-overlay').style.display = 'none';
+            document.querySelector('.processing-modal').style.display = 'none';
+        }
+
+        function showCloseIcon() {
+            document.querySelector('.spinner').style.display = 'none';
+            document.querySelector('.close-icon').style.display = 'block';
+        }
+
+        function logToStatus(message, type = '') {
             const status = document.getElementById('status');
-            const lines = status.innerHTML.split('<br>').slice(-5);
-            lines.push(message);
-            status.innerHTML = lines.join('<br>');
-            status.style.display = 'block';
-        }
+            const time = new Date().toLocaleTimeString();
 
-        function updateProgress(progress) {
-            const progressBar = document.querySelector('.progress-bar');
-            if (progress !== null) {
-                progressBar.style.width = `${progress}%`;
+            const line = document.createElement('div');
+            line.className = `status-line ${type}`;
+
+            const timestamp = document.createElement('span');
+            timestamp.className = 'status-timestamp';
+            timestamp.textContent = `[${time}]`;
+
+            const text = document.createElement('span');
+            text.textContent = message;
+
+            line.appendChild(timestamp);
+            line.appendChild(text);
+
+            status.appendChild(line);
+
+            // Auto-scroll to bottom
+            status.scrollTop = status.scrollHeight;
+
+            // Keep only last 100 messages
+            while (status.children.length > 100) {
+                status.removeChild(status.firstChild);
             }
-        }
-
-        function handleUploadResponse(reader) {
-            const decoder = new TextDecoder();
-            reader.read().then(function processText({ done, value }) {
-                if (done) return;
-                const events = decoder.decode(value).split('\n\n');
-                events.forEach(event => {
-                    if (event.startsWith('data: ')) {
-                        const data = JSON.parse(event.slice(6));
-                        console.log(data);
-                        const time = new Date().toLocaleTimeString();
-                        logToStatus(`[${time}] ${data.message}`);
-
-                        updateProgress(data.progress);
-
-                        if (data.status === 'done' && data.payload) {
-                            const link = document.createElement('a');
-                            link.innerHTML = 'Finished - download output here.';
-                            link.href = `/download/${data.payload}`;
-                            link.download = data.filename;
-                            const status = document.getElementById('status');
-                            status.appendChild(document.createElement("br"));
-                            status.appendChild(link);
-                        } else if (data.status === 'error') {
-                            const progressBar = document.querySelector('.progress-bar');
-                            progressBar.style.backgroundColor = '#dc3545';
-                            logToStatus(`Error: ${data.message}`);
-                        }
-                    }
-                });
-                return reader.read().then(processText);
-            });
         }
 
         function handleFormSubmit(formId, uploadUrl) {
             const form = document.getElementById(formId);
             form.addEventListener('submit', async function(e) {
                 e.preventDefault();
-                const progress = document.getElementById('progress');
-                const progressBar = document.querySelector('.progress-bar');
-                progress.style.display = 'block';
-                progressBar.style.width = '0%';
 
-                document.getElementById('status').innerHTML = '';
-                progressBar.style.backgroundColor = '#007bff';
-                logToStatus('Starting...');
+                const submitButton = form.querySelector('button[type="submit"]');
+                submitButton.disabled = true;
+
+                showProcessingStatus();
+                logToStatus('Starting processing...');
 
                 const formData = new FormData(form);
 
@@ -216,10 +327,42 @@
                     handleUploadResponse(response.body.getReader());
 
                 } catch (error) {
-                    logToStatus(`Error: ${error.message}`);
-                    const progressBar = document.querySelector('.progress-bar');
-                    progressBar.style.backgroundColor = '#dc3545';
+                    logToStatus(`Error: ${error.message}`, 'status-error');
+                    submitButton.disabled = false;
                 }
+            });
+        }
+
+        function handleUploadResponse(reader) {
+            const decoder = new TextDecoder();
+            reader.read().then(function processText({ done, value }) {
+                if (done) return;
+
+                const text = decoder.decode(value);
+                const events = text.split('\n\n');
+                events.forEach(event => {
+                    if (event.startsWith('data: ')) {
+                        const data = JSON.parse(event.slice(6));
+                        logToStatus(data.message);
+
+                        if (data.status === 'error') {
+                            logToStatus(data.message, 'status-error');
+                            showCloseIcon();
+                            document.querySelector('button[type="submit"]').disabled = false;
+                        } else if (data.status === 'done' && data.payload) {
+                            const link = document.createElement('a');
+                            link.innerHTML = '⬇️ Download output';
+                            link.href = `/download/${data.payload}`;
+                            link.download = data.filename;
+                            link.className = 'status-line status-success';
+                            document.getElementById('status').appendChild(link);
+                            logToStatus('Processing complete!', 'status-success');
+                            document.querySelector('button[type="submit"]').disabled = false;
+                            showCloseIcon();
+                        }
+                    }
+                });
+                return reader.read().then(processText);
             });
         }
     </script>

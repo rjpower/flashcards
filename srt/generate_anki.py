@@ -10,9 +10,9 @@ from typing import Callable, List, Optional, Sequence
 
 import bs4
 import genanki
+from bs4 import BeautifulSoup
 from google.cloud import texttospeech
 from google.oauth2 import service_account
-from bs4 import BeautifulSoup
 
 from srt.config import get_cache_path, settings
 from srt.schema import FlashCard, VocabItem
@@ -212,7 +212,7 @@ def generate_audio_for_cards(
     items: Sequence[FlashCard],
     language: str,
     logger: Callable[[str], None],
-    max_workers: int = 16,
+    max_workers: int = 4,
 ) -> dict[str, AudioData]:
     """Generate audio for cards using parallel processing"""
     audio_mapping = {}

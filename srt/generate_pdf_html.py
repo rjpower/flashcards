@@ -188,7 +188,10 @@ def create_flashcard_pdf(config: PDFGeneratorConfig):
 
     # Generate PDF using Playwright
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = p.chromium.launch(
+            headless=True, args=["--no-sandbox", "--disable-web-security"]
+        )
+
         page = browser.new_page()
         page.set_content(html)
 
@@ -201,5 +204,6 @@ def create_flashcard_pdf(config: PDFGeneratorConfig):
         }
 
         # Generate PDF
+        page.wait_for_function("document.fonts.ready")
         page.pdf(path=str(config.output_path), **print_options)
         browser.close()

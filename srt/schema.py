@@ -43,7 +43,6 @@ class VocabItem(BaseModel):
     meaning: str = ""
     context_native: str = ""
     context_en: str = ""
-    level: str = ""
     source: str = ""
 
     @property
@@ -75,7 +74,6 @@ class SourceMapping(BaseModel):
     meaning: Optional[str] = None
     context_native: Optional[str] = None
     context_en: Optional[str] = None
-    level: Optional[str] = None
 
 
 class ConversionStatus(enum.StrEnum):

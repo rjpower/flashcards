@@ -34,7 +34,7 @@ def csv_upload(client, tmp_path, filter_words=False):
 
     csv_content = "A,B,C\n1,漢字,meaning\n2,言葉,word\n3,本,book"
     csv_file = io.BytesIO(csv_content.encode("utf-8"))
-    
+
     if filter_words:
         filter_content = "漢字\n本"  # Filter out 2 of 3 words
         filter_file = io.BytesIO(filter_content.encode("utf-8"))
@@ -49,7 +49,6 @@ def csv_upload(client, tmp_path, filter_words=False):
         "meaning_field": "C",
         "context_native_field": "",
         "context_en_field": "",
-        "level_field": "",
         "separator": ",",
         "format": "pdf",
     }
@@ -80,7 +79,9 @@ def test_csv_upload_without_known_words(client, tmp_path):
     """Test CSV upload without known words filter"""
     unfiltered_size = csv_upload(client, tmp_path, filter_words=False)
     filtered_size = csv_upload(client, tmp_path, filter_words=True)
-    assert filtered_size < unfiltered_size, "Filtered PDF should be smaller than unfiltered PDF"
+    assert (
+        filtered_size < unfiltered_size
+    ), "Filtered PDF should be smaller than unfiltered PDF"
 
 
 def srt_upload(client, tmp_path, include_audio=False, filter_words=None):
@@ -157,7 +158,6 @@ def test_csv_upload_with_audio(client, tmp_path):
         "meaning_field": "meaning",
         "context_native_field": "",
         "context_en_field": "",
-        "level_field": "",
         "separator": ",",
         "format": "apkg",
         "include_audio": "1",

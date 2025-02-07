@@ -52,7 +52,7 @@ your own. By default the output file is written to `out/[input].{pdf|apkg}`.
 
 ```bash
 uv run scripts/main.py flashcards_from_csv ./sample/n5.csv # inferred mapping
-uv run scripts/main.py flashcards_from_csv ./sample/n5.csv --mapping=level=A,term=B
+uv run scripts/main.py flashcards_from_csv ./sample/n5.csv --mapping=term=B
 ```
 
 When generating an Anki package, you can specify the deck name and optionally

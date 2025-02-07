@@ -2,6 +2,42 @@
 
 {% block extra_styles %}
 <style>
+    .upload-form {
+        text-align: left;
+        max-width: 800px;
+        margin: 20px auto;
+    }
+    .upload-form form {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+    .file-input {
+        display: grid;
+        grid-template-columns: 150px 1fr;
+        align-items: center;
+        gap: 10px;
+    }
+    .form-controls {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+        margin-top: 20px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 4px;
+    }
+    button[type="submit"] {
+        padding: 10px 20px;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    button[type="submit"]:hover {
+        background: #0056b3;
+    }
     .field-mapping > .field-column {
         display: flex;
         flex-direction: column;
@@ -59,6 +95,10 @@
 {% block content %}
 <div class="upload-form">
     <form id="csvForm" enctype="multipart/form-data">
+        Pass in your CSV file (or just a list of words!) below. The model will automatically
+        scan your file to determine the fields. You can adjust the field mapping if needed.
+
+        Click "Generate Deck" to generate an Anki package or PDF of flashcards.
         <div class="file-input">
             <label>CSV File:</label>
             <input type="file" name="file" accept=".csv,.txt" required onchange="analyzeCSV(this)">
@@ -79,26 +119,22 @@
                     <select name="term_field" required></select>
                 </div>
                 <div class="field-row">
-                    <label>Reading Field:</label>
+                    <label>Reading (sound) Field:</label>
                     <select name="reading_field"></select>
                 </div>
                 <div class="field-row">
-                    <label>Meaning Field:</label>
+                    <label>Meaning (translation) Field:</label>
                     <select name="meaning_field"></select>
                 </div>
                 <div class="field-row">
-                    <label>Context (JP):</label>
+                    <label>Example Sentence (JP):</label>
                     <select name="context_native_field"></select>
                 </div>
             </div>
             <div class="field-column">
                 <div class="field-row">
-                    <label>Context (EN):</label>
+                    <label>Example Sentence (EN):</label>
                     <select name="context_en_field"></select>
-                </div>
-                <div class="field-row">
-                    <label>Level:</label>
-                    <select name="level_field"></select>
                 </div>
                 <div class="field-row">
                     <label>Separator:</label>
@@ -106,15 +142,17 @@
                 </div>
             </div>
         </div>
-        <select name="format" required>
-            <option value="apkg">Anki Deck</option>
-            <option value="pdf">PDF</option>
-        </select>
-        <label>
-            <input type="checkbox" name="include_audio" value="1">
-            Include TTS Audio
-        </label>
-        <button type="submit">Generate Deck</button>
+        <div class="form-controls">
+            <select name="format" required>
+                <option value="apkg">Anki Deck</option>
+                <option value="pdf">PDF</option>
+            </select>
+            <label>
+                <input type="checkbox" name="include_audio" value="1">
+                Include TTS Audio
+            </label>
+            <button type="submit">Generate Deck</button>
+        </div>
     </form>
 </div>
 {% endblock %}
@@ -192,7 +230,6 @@
                 document.querySelector('[name="meaning_field"]').value = mapping.meaning || '';
                 document.querySelector('[name="context_native_field"]').value = mapping.context_native || '';
                 document.querySelector('[name="context_en_field"]').value = mapping.context_en || '';
-                document.querySelector('[name="level_field"]').value = mapping.level_field || '';
             }
 
             // Update separator

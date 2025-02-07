@@ -168,7 +168,7 @@ def infer_missing_fields(
     completed = 0
     all_results = []
 
-    with ThreadPoolExecutor(max_workers=16) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
         future_to_chunk = {
             executor.submit(_infer_missing_fields_chunk, chunk, progress_logger): chunk
             for chunk in chunks
@@ -429,18 +429,23 @@ def infer_field_mapping(df: pd.DataFrame) -> dict:
     )
 
     prompt = f"""Analyze this CSV data and suggest mappings for a vocabulary flashcard system.
-The system needs these fields: term, reading, meaning, and optionally context_native, context_en.
+The system has the following fields:
+
+* term: the native word or phrase
+* reading: the pronunciation of the term, e.g. Hiragana or Katakana for Japanese, Pinyin for Chinese, etc.
+* meaning: the English translation of the term
+* context_native: a native sentence using the term
+* context_en: the English translation of the sentence
+
+Only "term" is mandatory, and should be the native word or phrase.
+If you don't have a value for a field, leave it blank.
+
 The columns are labeled with letters (A, B, C, etc.).
 Look at the content in each column to suggest the best mapping.
 
 CSV Data (first few rows):
 {sample_data}
 
-"term" is mandatory, and should be the native word or phrase.
-"reading" is the pronunciation of the term, e.g. Hiragana or Katakana for Japanese, Pinyin for Chinese, etc.
-"meaning" is the English translation of the term.
-"context_native" is a native sentence using the term.
-"context_en" is the English translation of the sentence.
 
 Return only valid JSON in this format:
 {{

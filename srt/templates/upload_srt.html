@@ -1,5 +1,46 @@
 {% extends "base.html" %}
 
+{% block extra_styles %}
+<style>
+    .upload-form {
+        text-align: left;
+        max-width: 800px;
+        margin: 20px auto;
+    }
+    .upload-form form {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+    .file-input {
+        display: grid;
+        grid-template-columns: 150px 1fr;
+        align-items: center;
+        gap: 10px;
+    }
+    .form-controls {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+        margin-top: 20px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 4px;
+    }
+    button[type="submit"] {
+        padding: 10px 20px;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    button[type="submit"]:hover {
+        background: #0056b3;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="upload-form">
     <form id="srtForm" enctype="multipart/form-data">
@@ -11,15 +52,17 @@
             <label>Filter List (Optional):</label>
             <input type="file" name="filter_file" accept=".txt" title="Optional list of words to filter out">
         </div>
-        <select name="format" required>
-            <option value="apkg">Anki Deck</option>
-            <option value="pdf">Flashcard PDF</option>
-        </select>
-        <label>
-            <input type="checkbox" name="include_audio" value="1">
-            Include TTS Audio
-        </label>
-        <button type="submit">Generate Deck</button>
+        <div class="form-controls">
+            <select name="format" required>
+                <option value="apkg">Anki Deck</option>
+                <option value="pdf">Flashcard PDF</option>
+            </select>
+            <label>
+                <input type="checkbox" name="include_audio" value="1">
+                Include TTS Audio
+            </label>
+            <button type="submit">Generate Deck</button>
+        </div>
     </form>
 </div>
 {% endblock %}

@@ -2,6 +2,7 @@ import hashlib
 import logging
 import threading
 import time
+import trace
 import traceback
 from dataclasses import dataclass, field
 from functools import wraps
@@ -67,9 +68,8 @@ class ProcessingTracker:
         progress = ConversionProgress(message=message, status=ConversionStatus.RUNNING)
         self.progress_queue.append(progress)
 
-    def set_error(self, error: Exception):
+    def set_error(self, error: str):
         """Set error state"""
-        self.error = str(error)
         self.is_complete = True
         progress = ConversionProgress(message=str(error), status=ConversionStatus.ERROR)
         self.progress_queue.append(progress)
@@ -118,7 +118,7 @@ def json_error(f):
 
 @app.route("/")
 def index():
-    return render_template("upload_srt.html", active_tab="srt")
+    return render_template("upload_csv.html", active_tab="csv")
 
 
 @app.route("/srt")
@@ -192,7 +192,8 @@ def upload_srt():
             process_srt(config)
             tracker.set_complete(output_path.name)
         except Exception as e:
-            tracker.set_error(e)
+            stack = traceback.format_exc()
+            tracker.set_error(stack)
         finally:
             srt_path.unlink(missing_ok=True)
 
@@ -258,7 +259,6 @@ def upload_csv():
         meaning=request.form["meaning_field"],
         context_native=request.form.get("context_native_field"),
         context_en=request.form.get("context_en_field"),
-        level=request.form.get("level_field"),
     )
 
     output_format = request.form.get("format", "apkg")
@@ -293,7 +293,7 @@ def upload_csv():
             process_csv(config)
             tracker.set_complete(output_path.name)
         except Exception as e:
-            tracker.set_error(e)
+            tracker.set_error(traceback.format_exc())
 
     tracker.start_processing(_process_csv)
     return tracker.stream_response()
